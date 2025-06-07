@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DevQ&A - Collaborative Q&A Platform</title>
+    <link rel="stylesheet" href="style.css">
+    
+    <!-- Firebase SDK -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/firebase/9.23.0/firebase-app-compat.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/firebase/9.23.0/firebase-auth-compat.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/firebase/9.23.0/firebase-firestore-compat.min.js"></script>
+</head>
+<body>
+    <!-- Header -->
+    <header class="header">
+        <div class="container">
+            <div class="nav-brand">
+                <h1>DevQ&A</h1>
+            </div>
+            
+            <nav class="nav">
+                <div class="nav-links">
+                    <a href="#" class="nav-link" onclick="showHome()">Home</a>
+                    <a href="#" class="nav-link" onclick="showAskQuestion()">Ask Question</a>
+                </div>
+                
+                <!-- Authentication Section -->
+                <div class="auth-section">
+                    <div id="auth-buttons" class="auth-buttons">
+                        <button class="btn btn-outline" onclick="showLoginModal()">Login</button>
+                        <button class="btn btn-primary" onclick="showSignupModal()">Sign Up</button>
+                    </div>
+                    
+                    <div id="user-menu" class="user-menu" style="display: none;">
+                        <div class="user-info">
+                            <img id="user-avatar" src="" alt="User Avatar" class="user-avatar">
+                            <span id="user-name">User Name</span>
+                            <div class="user-reputation">
+                                <span id="user-rep">0</span> rep
+                            </div>
+                        </div>
+                        <button class="btn btn-outline" onclick="logout()">Logout</button>
+                    </div>
+                </div>
+            </nav>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="main">
+        <!-- Home Page -->
+        <div id="home-page" class="page">
+            <div class="container">
+                <div class="page-header">
+                    <h2>Recent Questions</h2>
+                    <button class="btn btn-primary" onclick="showAskQuestion()">Ask Question</button>
+                </div>
+                
+                <div class="filters">
+                    <button class="filter-btn active" onclick="filterQuestions('newest')">Newest</button>
+                    <button class="filter-btn" onclick="filterQuestions('votes')">Most Votes</button>
+                    <button class="filter-btn" onclick="filterQuestions('answers')">Most Answers</button>
+                </div>
+                
+                <div id="questions-list" class="questions-list">
+                    <!-- Questions will be loaded here -->
+                    <div class="loading">Loading questions...</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Ask Question Page -->
+        <div id="ask-question-page" class="page" style="display: none;">
+            <div class="container">
+                <div class="page-header">
+                    <h2>Ask a Question</h2>
+                </div>
+                
+                <form id="ask-question-form" class="question-form">
+                    <div class="form-group">
+                        <label for="question-title">Question Title</label>
+                        <input type="text" id="question-title" required 
+                               placeholder="What's your programming question? Be specific.">
+                        <small>Be specific and imagine you're asking a question to another person</small>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="question-body">Question Details</label>
+                        <textarea id="question-body" rows="10" required 
+                                  placeholder="Provide all relevant details. Include any code, error messages, and what you've tried so far."></textarea>
+                        <small>Include all the information someone would need to answer your question</small>
+                    </div>
+                    
+                    <div class="form-actions">
+                        <button type="button" class="btn btn-outline" onclick="showHome()">Cancel</button>
+                        <button type="submit" class="btn btn-primary">Post Question</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <!-- Question Detail Page -->
+        <div id="question-detail-page" class="page" style="display: none;">
+            <div class="container">
+                <div id="question-detail" class="question-detail">
+                    <!-- Question details will be loaded here -->
+                </div>
+                
+                <div id="answers-section" class="answers-section">
+                    <h3 id="answers-count">0 Answers</h3>
+                    <div id="answers-list" class="answers-list">
+                        <!-- Answers will be loaded here -->
+                    </div>
+                </div>
+                
+                <div id="answer-form-section" class="answer-form-section">
+                    <h3>Your Answer</h3>
+                    <form id="answer-form" class="answer-form">
+                        <div class="form-group">
+                            <textarea id="answer-body" rows="8" required 
+                                      placeholder="Write your answer here..."></textarea>
+                        </div>
+                        <div class="form-actions">
+                            <button type="submit" class="btn btn-primary">Post Answer</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- Auth Modals -->
+    <div id="auth-modal" class="modal" style="display: none;">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 id="auth-modal-title">Login</h3>
+                <button class="close-btn" onclick="closeAuthModal()">&times;</button>
+            </div>
+            
+            <div class="modal-body">
+                <!-- Google Sign In -->
+                <button id="google-signin-btn" class="btn btn-google">
+                    <img src="data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTgiIGhlaWdodD0iMTgiIHZpZXdCb3g9IjAgMCAxOCAxOCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHBhdGggZD0iTTE3LjY0IDkuMjA0ODJDMTC3NjQgOC41NjUzMiAxNy41MjQ5IDcuOTUxMDcgMTcuMzMxOSA3LjMxNTE0SDE5LjAxVjguMzY5NjVIMTYuMTMxMkMxNS44MDcgOC45MzUzOCAxNS40MTk0IDkuNDI4NjQgMTQuOTkyMSA5LjgyNzI2TDE0Ljk5MjEgMTAuMzUxOEgxNi4zMTA4QzE2Ljg5NTcgOS4wNzUwMSAxNy4zMzE5IDcuNjkyOTIgMTcuMzMxOSA2LjEzNjM2VjUuODY5NDJIMTC8MTcuNjQgOS4yMDQ4MloiIGZpbGw9IiM0Mjg1RjQiLz4KPHBhdGggZD0iTTkgMTZDMTEuNjMgMTYgMTMuODEgMTQuODkgMTUuMjQgMTIuOTJMTMuMjQgMTEuNkMxMi41NCAxMi4yMyAxMS41OCAxMi42NiAxMCAxMi42NkM4LjQyIDEyLjY2IDcuNTUgMTEuNTkgNy4yNCAxMC4yN0g1LjIxVjEwLjgxQzYuNDcgMTMuMzEgOC40OSAxNiAxMCAxNloiIGZpbGw9IiMzNEE4NTMiLz4KPHBhdGggZD0iTTcuMjQgMTAuMjdDNi45MyA5LjYxIDYuOTMgOC44NCA3LjI0IDguMThWNy42NEg1LjIxQzQuNTQgOC45NyA0LjU0IDEwLjQ4IDUuMjEgMTEuODFMNy4yNCAxMC4yN1oiIGZpbGw9IiNGQkJDMDUiLz4KPHBhdGggZD0iTTEwIDYuNjdDMTEuNjYgNi42NyAxMy4xIDcuMjYgMTQuMTkgOC4zTDE1Ljk5IDYuNUMxNC4zNCA1LjAzIDEyLjE5IDQuMTcgMTAgNC4xN0M4LjQ5IDQuMTcgNi40NyA2Ljg2IDUuMjEgOS4zNkw3LjI0IDEwLjkwNUM3LjU1IDkuNjIgOC40MiA4LjU1IDEwIDguNTVaIiBmaWxsPSIjRUE0MzM1Ii8+Cjwvc3ZnPgo=" alt="Google">
+                    Continue with Google
+                </button>
+                
+                <div class="divider">
+                    <span>or</span>
+                </div>
+                
+                <!-- Email/Password Form -->
+                <form id="email-auth-form">
+                    <div class="form-group">
+                        <input type="email" id="auth-email" required placeholder="Email">
+                    </div>
+                    <div class="form-group">
+                        <input type="password" id="auth-password" required placeholder="Password">
+                    </div>
+                    <button type="submit" class="btn btn-primary" id="auth-submit-btn">Login</button>
+                </form>
+                
+                <div class="auth-switch">
+                    <span id="auth-switch-text">Don't have an account?</span>
+                    <a href="#" id="auth-switch-link" onclick="toggleAuthMode()">Sign up</a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Overlay -->
+    <div id="overlay" class="overlay" style="display: none;" onclick="closeAuthModal()"></div>
+
+    <script src="firebase-config.js"></script>
+    <script src="app.js"></script>
+</body>
+</html>

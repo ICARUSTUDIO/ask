@@ -370,10 +370,11 @@ async function loadQuestionDetail(questionId) {
 
 async function loadAnswers(questionId) {
     try {
+        console.log('Loading answers for question:', questionId);
+        
+        // Simple query without complex ordering
         const answersSnapshot = await db.collection('answers')
             .where('questionId', '==', questionId)
-            .orderBy('voteCount', 'desc')
-            .orderBy('timestamp', 'asc')
             .get();
         
         const answerCount = answersSnapshot.size;
@@ -384,29 +385,49 @@ async function loadAnswers(questionId) {
             return;
         }
         
-        const answersHTML = answersSnapshot.docs.map(doc => {
-            const answer = doc.data();
+        // Get all answers and sort them manually
+        const answersData = answersSnapshot.docs.map(doc => ({
+            id: doc.id,
+            ...doc.data()
+        }));
+        
+        // Sort by votes (descending) then by timestamp (ascending)
+        answersData.sort((a, b) => {
+            const aVotes = a.voteCount || 0;
+            const bVotes = b.voteCount || 0;
+            
+            if (bVotes !== aVotes) {
+                return bVotes - aVotes; // Higher votes first
+            }
+            
+            // If votes are equal, sort by timestamp (older first)
+            const aTime = a.timestamp?.toDate()?.getTime() || 0;
+            const bTime = b.timestamp?.toDate()?.getTime() || 0;
+            return aTime - bTime;
+        });
+        
+        const answersHTML = answersData.map(answer => {
             const timeAgo = getTimeAgo(answer.timestamp?.toDate());
             
             return `
                 <div class="answer-card">
                     <div style="display: flex; align-items: flex-start; gap: 20px;">
                         <div class="question-votes">
-                            <button class="vote-btn" onclick="voteAnswer('${doc.id}', 1)" 
+                            <button class="vote-btn" onclick="voteAnswer('${answer.id}', 1)" 
                                     ${!currentUser ? 'disabled' : ''}>▲</button>
                             <span class="vote-count">${answer.voteCount || 0}</span>
-                            <button class="vote-btn" onclick="voteAnswer('${doc.id}', -1)" 
+                            <button class="vote-btn" onclick="voteAnswer('${answer.id}', -1)" 
                                     ${!currentUser ? 'disabled' : ''}>▼</button>
                         </div>
                         <div style="flex: 1;">
                             <div class="answer-body">
-                                ${escapeHtml(answer.body).replace(/\n/g, '<br>')}
+                                ${escapeHtml(answer.body || '').replace(/\n/g, '<br>')}
                             </div>
                             <div class="question-meta mt-20">
                                 <div class="question-author">
                                     <img src="${answer.authorPhoto || 'https://via.placeholder.com/20x20?text=U'}" 
                                          alt="Author" class="author-avatar">
-                                    <span>${escapeHtml(answer.authorName)}</span>
+                                    <span>${escapeHtml(answer.authorName || 'Anonymous')}</span>
                                 </div>
                                 <span>${timeAgo}</span>
                             </div>
@@ -420,7 +441,12 @@ async function loadAnswers(questionId) {
         
     } catch (error) {
         console.error('Error loading answers:', error);
-        document.getElementById('answers-list').innerHTML = '<p>Error loading answers.</p>';
+        document.getElementById('answers-list').innerHTML = `
+            <p style="color: #c33; padding: 20px; background: #fee; border-radius: 4px;">
+                Error loading answers: ${error.message}
+                <br><button onclick="loadAnswers('${questionId}')" class="btn btn-outline" style="margin-top: 10px;">Try Again</button>
+            </p>
+        `;
     }
 }
 

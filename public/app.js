@@ -141,16 +141,20 @@ async function createUserDocument(user) {
         const userDoc = await userRef.get();
         
         if (!userDoc.exists) {
-            await userRef.set({
-                displayName: user.displayName || user.email,
-                email: user.email,
+            const userData = {
+                displayName: user.displayName || user.email || 'Anonymous User',
+                email: user.email || '',
                 photoURL: user.photoURL || '',
                 reputation: 0,
                 joinDate: firebase.firestore.FieldValue.serverTimestamp(),
                 questionsAsked: 0,
                 answersGiven: 0
-            });
-            console.log('User document created');
+            };
+            
+            await userRef.set(userData);
+            console.log('User document created successfully');
+        } else {
+            console.log('User document already exists');
         }
     } catch (error) {
         console.error('Error creating user document:', error);
@@ -158,14 +162,30 @@ async function createUserDocument(user) {
 }
 
 async function loadUserReputation() {
+    if (!currentUser) return;
+    
     try {
         const userDoc = await db.collection('users').doc(currentUser.uid).get();
         if (userDoc.exists) {
             const userData = userDoc.data();
-            document.getElementById('user-rep').textContent = userData.reputation || 0;
+            const reputation = userData.reputation || 0;
+            const reputationElement = document.getElementById('user-rep');
+            if (reputationElement) {
+                reputationElement.textContent = reputation;
+            }
+            console.log('User reputation loaded:', reputation);
+        } else {
+            console.warn('User document does not exist, creating one...');
+            await createUserDocument(currentUser);
+            // Recursively call to load after creation
+            await loadUserReputation();
         }
     } catch (error) {
         console.error('Error loading user reputation:', error);
+        const reputationElement = document.getElementById('user-rep');
+        if (reputationElement) {
+            reputationElement.textContent = '0';
+        }
     }
 }
 
@@ -372,24 +392,43 @@ async function loadAnswers(questionId) {
     try {
         console.log('Loading answers for question:', questionId);
         
-        // Simple query without complex ordering
         const answersSnapshot = await db.collection('answers')
             .where('questionId', '==', questionId)
             .get();
         
         const answerCount = answersSnapshot.size;
-        document.getElementById('answers-count').textContent = `${answerCount} Answer${answerCount !== 1 ? 's' : ''}`;
         
-        if (answerCount === 0) {
-            document.getElementById('answers-list').innerHTML = '<p class="text-muted">No answers yet. Be the first to answer!</p>';
+        // Safely update answers count
+        const answersCountElement = document.getElementById('answers-count');
+        if (answersCountElement) {
+            answersCountElement.textContent = `${answerCount} Answer${answerCount !== 1 ? 's' : ''}`;
+        }
+        
+        const answersListElement = document.getElementById('answers-list');
+        if (!answersListElement) {
+            console.warn('answers-list element not found');
             return;
         }
         
-        // Get all answers and sort them manually
-        const answersData = answersSnapshot.docs.map(doc => ({
-            id: doc.id,
-            ...doc.data()
-        }));
+        if (answerCount === 0) {
+            answersListElement.innerHTML = '<p class="text-muted">No answers yet. Be the first to answer!</p>';
+            return;
+        }
+        
+        // Get all answers and sort them manually with better error handling
+        const answersData = answersSnapshot.docs.map(doc => {
+            const data = doc.data();
+            return {
+                id: doc.id,
+                ...data,
+                // Ensure required fields have default values
+                voteCount: typeof data.voteCount === 'number' ? data.voteCount : 0,
+                timestamp: data.timestamp || null,
+                authorName: data.authorName || 'Anonymous',
+                authorPhoto: data.authorPhoto || 'https://via.placeholder.com/20x20?text=U',
+                body: data.body || ''
+            };
+        });
         
         // Sort by votes (descending) then by timestamp (ascending)
         answersData.sort((a, b) => {
@@ -401,13 +440,26 @@ async function loadAnswers(questionId) {
             }
             
             // If votes are equal, sort by timestamp (older first)
-            const aTime = a.timestamp?.toDate()?.getTime() || 0;
-            const bTime = b.timestamp?.toDate()?.getTime() || 0;
+            const aTime = a.timestamp?.toDate?.()?.getTime() || 0;
+            const bTime = b.timestamp?.toDate?.()?.getTime() || 0;
             return aTime - bTime;
         });
         
         const answersHTML = answersData.map(answer => {
-            const timeAgo = getTimeAgo(answer.timestamp?.toDate());
+            // Safe timestamp handling
+            let timeAgo = 'Unknown time';
+            try {
+                if (answer.timestamp && typeof answer.timestamp.toDate === 'function') {
+                    timeAgo = getTimeAgo(answer.timestamp.toDate());
+                }
+            } catch (timeError) {
+                console.warn('Error parsing timestamp for answer:', answer.id, timeError);
+                timeAgo = 'Some time ago';
+            }
+            
+            // Ensure we have valid data before rendering
+            const safeBody = answer.body ? escapeHtml(answer.body).replace(/\n/g, '<br>') : 'No content';
+            const safeAuthorName = answer.authorName ? escapeHtml(answer.authorName) : 'Anonymous';
             
             return `
                 <div class="answer-card">
@@ -415,19 +467,19 @@ async function loadAnswers(questionId) {
                         <div class="question-votes">
                             <button class="vote-btn" onclick="voteAnswer('${answer.id}', 1)" 
                                     ${!currentUser ? 'disabled' : ''}>▲</button>
-                            <span class="vote-count">${answer.voteCount || 0}</span>
+                            <span class="vote-count">${answer.voteCount}</span>
                             <button class="vote-btn" onclick="voteAnswer('${answer.id}', -1)" 
                                     ${!currentUser ? 'disabled' : ''}>▼</button>
                         </div>
                         <div style="flex: 1;">
                             <div class="answer-body">
-                                ${escapeHtml(answer.body || '').replace(/\n/g, '<br>')}
+                                ${safeBody}
                             </div>
                             <div class="question-meta mt-20">
                                 <div class="question-author">
-                                    <img src="${answer.authorPhoto || 'https://via.placeholder.com/20x20?text=U'}" 
+                                    <img src="${answer.authorPhoto}" 
                                          alt="Author" class="author-avatar">
-                                    <span>${escapeHtml(answer.authorName || 'Anonymous')}</span>
+                                    <span>${safeAuthorName}</span>
                                 </div>
                                 <span>${timeAgo}</span>
                             </div>
@@ -437,19 +489,33 @@ async function loadAnswers(questionId) {
             `;
         }).join('');
         
-        document.getElementById('answers-list').innerHTML = answersHTML;
+        answersListElement.innerHTML = answersHTML;
         
     } catch (error) {
         console.error('Error loading answers:', error);
-        document.getElementById('answers-list').innerHTML = `
-            <p style="color: #c33; padding: 20px; background: #fee; border-radius: 4px;">
-                Error loading answers: ${error.message}
-                <br><button onclick="loadAnswers('${questionId}')" class="btn btn-outline" style="margin-top: 10px;">Try Again</button>
-            </p>
-        `;
+        
+        const answersListElement = document.getElementById('answers-list');
+        if (answersListElement) {
+            // More specific error handling
+            let errorMessage = 'Error loading answers';
+            if (error.code === 'permission-denied') {
+                errorMessage = 'Permission denied loading answers';
+            } else if (error.code === 'unavailable') {
+                errorMessage = 'Service temporarily unavailable';
+            }
+            
+            answersListElement.innerHTML = `
+                <p style="color: #c33; padding: 20px; background: #fee; border-radius: 4px;">
+                    ${errorMessage}: ${error.message}
+                    <br><button onclick="loadAnswers('${questionId}')" class="btn btn-outline" style="margin-top: 10px;">Try Again</button>
+                </p>
+            `;
+        }
+        
+        // Re-throw error to let calling function know it failed
+        throw error;
     }
 }
-
 async function submitAnswer(event) {
     event.preventDefault();
     
@@ -502,14 +568,102 @@ async function submitAnswer(event) {
 
 // Voting Functions
 async function voteQuestion(questionId, voteValue) {
-    await vote('questions', questionId, voteValue);
-    loadQuestionDetail(questionId);
+    if (!currentUser) {
+        showLoginModal();
+        return;
+    }
+    
+    try {
+        await vote('questions', questionId, voteValue);
+        // Reload question detail only if vote succeeded
+        await loadQuestionDetail(questionId);
+    } catch (error) {
+        console.error('Error voting on question:', error);
+        // vote() function already shows appropriate error message
+    }
 }
 
 async function voteAnswer(answerId, voteValue) {
-    await vote('answers', answerId, voteValue);
-    loadAnswers(currentQuestionId);
+    if (!currentUser) {
+        showLoginModal();
+        return;
+    }
+    
+    try {
+        // Only proceed with reload if vote succeeds
+        await vote('answers', answerId, voteValue);
+        
+        // Reload answers - but handle failure gracefully
+        try {
+            await loadAnswers(currentQuestionId);
+        } catch (loadError) {
+            console.error('Failed to reload answers after successful vote:', loadError);
+            // Vote succeeded but reload failed - show a different message
+            alert('Vote recorded successfully, but failed to refresh the page. Please reload manually.');
+        }
+        
+    } catch (voteError) {
+        console.error('Error voting on answer:', voteError);
+        // vote() function already handles and shows the error message
+        // Don't show additional alert here
+    }
 }
+
+async function updateAuthorReputation(itemData, oldVote, newVote, collection) {
+    // Skip if no author or if user is voting on their own content
+    if (!itemData.authorId || itemData.authorId === currentUser.uid) {
+        return;
+    }
+    
+    const reputationChange = (newVote - oldVote) * (collection === 'questions' ? 5 : 10);
+    
+    // Skip if no reputation change
+    if (reputationChange === 0) {
+        return;
+    }
+    
+    try {
+        const userRef = db.collection('users').doc(itemData.authorId);
+        
+        // Use a transaction to ensure data consistency
+        await db.runTransaction(async (transaction) => {
+            const userDoc = await transaction.get(userRef);
+            
+            if (!userDoc.exists) {
+                console.warn('Author user document does not exist:', itemData.authorId);
+                // Create user document if it doesn't exist
+                await transaction.set(userRef, {
+                    displayName: 'Unknown User',
+                    email: '',
+                    photoURL: '',
+                    reputation: Math.max(0, reputationChange), // Don't allow negative reputation
+                    joinDate: firebase.firestore.FieldValue.serverTimestamp(),
+                    questionsAsked: 0,
+                    answersGiven: 0
+                });
+                console.log('Created missing user document with reputation:', reputationChange);
+            } else {
+                const currentReputation = userDoc.data().reputation || 0;
+                const newReputation = Math.max(0, currentReputation + reputationChange); // Don't allow negative reputation
+                
+                await transaction.update(userRef, {
+                    reputation: newReputation
+                });
+                console.log(`Reputation updated: ${currentReputation} -> ${newReputation} (change: ${reputationChange})`);
+            }
+        });
+        
+    } catch (reputationError) {
+        // Log reputation error but don't fail the vote
+        console.error('Error updating reputation (vote still succeeded):', reputationError);
+        
+        // Optionally show a non-blocking notification about reputation update failure
+        if (reputationError.code === 'permission-denied') {
+            console.warn('Permission denied when updating reputation - check Firestore rules');
+        }
+    }
+}
+
 
 async function vote(collection, documentId, voteValue) {
     if (!currentUser) {
@@ -521,7 +675,9 @@ async function vote(collection, documentId, voteValue) {
         const docRef = db.collection(collection).doc(documentId);
         const doc = await docRef.get();
         
-        if (!doc.exists) return;
+        if (!doc.exists) {
+            throw new Error('Content no longer exists');
+        }
         
         const data = doc.data();
         const votes = data.votes || {};
@@ -548,25 +704,35 @@ async function vote(collection, documentId, voteValue) {
         // Calculate new vote count
         const newVoteCount = Object.values(updatedVotes).reduce((sum, vote) => sum + vote, 0);
         
-        // Update document
+        // Update document with vote data
         await docRef.update({
             votes: updatedVotes,
             voteCount: newVoteCount
         });
         
-        // Update author's reputation
-        if (data.authorId !== currentUser.uid) {
-            const reputationChange = (newVote - currentVote) * (collection === 'questions' ? 5 : 10);
-            if (reputationChange !== 0) {
-                await db.collection('users').doc(data.authorId).update({
-                    reputation: firebase.firestore.FieldValue.increment(reputationChange)
-                });
-            }
-        }
+        console.log('Vote updated successfully');
+        
+        // Update author's reputation - improved error handling
+        await updateAuthorReputation(data, currentVote, newVote, collection);
         
     } catch (error) {
         console.error('Error voting:', error);
-        alert('Error submitting vote. Please try again.');
+        
+        // Provide more specific error messages
+        let errorMessage = 'Error submitting vote. Please try again.';
+        
+        if (error.code === 'permission-denied') {
+            errorMessage = 'You do not have permission to vote on this item.';
+        } else if (error.code === 'not-found') {
+            errorMessage = 'The item you are trying to vote on no longer exists.';
+        } else if (error.code === 'unavailable') {
+            errorMessage = 'Service temporarily unavailable. Please try again.';
+        } else if (error.message === 'Content no longer exists') {
+            errorMessage = 'This content has been deleted.';
+        }
+        
+        alert(errorMessage);
+        throw error; // Re-throw to allow calling functions to handle if needed
     }
 }
 

@@ -354,6 +354,7 @@ body {
     align-items: center;
     gap: 10px;
     margin-right: 20px;
+    flex-shrink: 0;
 }
 
 .vote-btn {
@@ -371,10 +372,15 @@ body {
     transition: all 0.2s;
 }
 
-.vote-btn:hover {
+.vote-btn:hover:not(:disabled) {
     background: #f3f4f6;
     border-color: #2563eb;
     color: #2563eb;
+}
+
+.vote-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
 }
 
 .vote-btn.voted {
@@ -405,6 +411,44 @@ body {
     border-radius: 8px;
     padding: 20px;
     margin-bottom: 20px;
+}
+
+.answer-content {
+    display: flex;
+    align-items: flex-start;
+    gap: 20px;
+}
+
+.answer-votes {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+    flex-shrink: 0;
+}
+
+.answer-body-container {
+    flex: 1;
+    min-width: 0;
+}
+
+.answer-body {
+    margin-bottom: 15px;
+    line-height: 1.6;
+}
+
+.answer-meta {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 14px;
+    color: #666;
+}
+
+.answer-author {
+    display: flex;
+    align-items: center;
+    gap: 8px;
 }
 
 .answer-form-section {
@@ -529,8 +573,12 @@ body {
     font-style: italic;
 }
 
-/* Responsive Design */
+/* Mobile Responsive Design */
 @media (max-width: 768px) {
+    .container {
+        padding: 0 15px;
+    }
+    
     .header .container {
         flex-direction: column;
         gap: 15px;
@@ -540,6 +588,19 @@ body {
     .nav {
         width: 100%;
         justify-content: space-between;
+        gap: 20px;
+    }
+    
+    .nav-links {
+        gap: 15px;
+    }
+    
+    .nav-brand h1 {
+        font-size: 20px;
+    }
+    
+    .main {
+        padding: 20px 0;
     }
     
     .page-header {
@@ -548,31 +609,169 @@ body {
         align-items: flex-start;
     }
     
+    .page-header h2 {
+        font-size: 24px;
+    }
+    
     .filters {
         flex-wrap: wrap;
+        gap: 8px;
+    }
+    
+    .filter-btn {
+        padding: 6px 12px;
+        font-size: 13px;
+    }
+    
+    .question-card {
+        padding: 15px;
     }
     
     .question-stats {
         flex-wrap: wrap;
-        gap: 10px;
+        gap: 15px;
+        margin-bottom: 12px;
+    }
+    
+    .question-title {
+        font-size: 16px;
     }
     
     .question-meta {
         flex-direction: column;
-        gap: 10px;
+        gap: 8px;
         align-items: flex-start;
     }
     
+    .question-form, .answer-form {
+        padding: 20px;
+        margin: 0 -5px;
+    }
+    
     .form-actions {
-        justify-content: stretch;
+        flex-direction: column;
+        gap: 10px;
     }
     
     .form-actions .btn {
-        flex: 1;
+        width: 100%;
+        text-align: center;
+    }
+    
+    .question-detail {
+        padding: 20px;
+        margin: 0 -5px 20px;
+    }
+    
+    .question-header h1 {
+        font-size: 20px;
+    }
+    
+    /* Mobile voting layout */
+    .answer-content {
+        flex-direction: column;
+        gap: 15px;
+    }
+    
+    .answer-votes, .question-votes {
+        flex-direction: row;
+        justify-content: center;
+        gap: 15px;
+        margin-right: 0;
+        margin-bottom: 10px;
+    }
+    
+    .vote-btn {
+        width: 35px;
+        height: 35px;
+        font-size: 16px;
+    }
+    
+    .vote-count {
+        font-size: 16px;
+        display: flex;
+        align-items: center;
+    }
+    
+    .answer-meta {
+        flex-direction: column;
+        gap: 8px;
+        align-items: flex-start;
     }
     
     .modal-content {
         margin: 20px;
+        width: calc(100% - 40px);
+        max-width: none;
+    }
+    
+    .modal-header {
+        padding: 15px 20px;
+    }
+    
+    .modal-body {
+        padding: 20px;
+    }
+    
+    .user-menu {
+        flex-wrap: wrap;
+        gap: 10px;
+    }
+    
+    .user-info {
+        flex-wrap: wrap;
+        gap: 8px;
+    }
+    
+    .auth-buttons {
+        flex-wrap: wrap;
+        gap: 8px;
+    }
+}
+
+@media (max-width: 480px) {
+    .container {
+        padding: 0 10px;
+    }
+    
+    .nav-brand h1 {
+        font-size: 18px;
+    }
+    
+    .btn {
+        padding: 6px 12px;
+        font-size: 13px;
+    }
+    
+    .question-card {
+        padding: 12px;
+    }
+    
+    .question-title {
+        font-size: 15px;
+    }
+    
+    .question-form, .answer-form {
+        padding: 15px;
+    }
+    
+    .question-detail {
+        padding: 15px;
+    }
+    
+    .modal-content {
+        margin: 15px;
+        width: calc(100% - 30px);
+    }
+    
+    .vote-btn {
+        width: 30px;
+        height: 30px;
+        font-size: 14px;
+    }
+    
+    .vote-count {
+        font-size: 14px;
     }
 }
 

@@ -18,7 +18,7 @@ body {
     padding: 0 20px;
 }
 
-/* Header Styles */
+/* Optimized Header Styles */
 .header {
     background: #fff;
     border-bottom: 1px solid #e0e0e0;
@@ -32,19 +32,23 @@ body {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 15px 20px;
+    padding: 12px 20px;
+    min-height: 60px;
 }
 
 .nav-brand h1 {
     color: #2563eb;
     font-size: 24px;
     font-weight: 700;
+    white-space: nowrap;
 }
 
 .nav {
     display: flex;
     align-items: center;
-    gap: 30px;
+    gap: 20px;
+    flex: 1;
+    justify-content: flex-end;
 }
 
 .nav-links {
@@ -57,6 +61,7 @@ body {
     color: #666;
     font-weight: 500;
     transition: color 0.2s;
+    white-space: nowrap;
 }
 
 .nav-link:hover {
@@ -67,23 +72,25 @@ body {
 .auth-section {
     display: flex;
     align-items: center;
+    flex-shrink: 0;
 }
 
 .auth-buttons {
     display: flex;
-    gap: 10px;
+    gap: 8px;
+    align-items: center;
 }
 
 .user-menu {
     display: flex;
     align-items: center;
-    gap: 15px;
+    gap: 12px;
 }
 
 .user-info {
     display: flex;
     align-items: center;
-    gap: 10px;
+    gap: 8px;
 }
 
 .user-avatar {
@@ -91,12 +98,14 @@ body {
     height: 32px;
     border-radius: 50%;
     border: 2px solid #e0e0e0;
+    flex-shrink: 0;
 }
 
 .user-reputation {
     font-size: 12px;
     color: #666;
     font-weight: 500;
+    white-space: nowrap;
 }
 
 /* Button Styles */
@@ -110,6 +119,7 @@ body {
     text-decoration: none;
     display: inline-block;
     font-size: 14px;
+    white-space: nowrap;
 }
 
 .btn-primary {
@@ -573,34 +583,73 @@ body {
     font-style: italic;
 }
 
-/* Mobile Responsive Design */
+/* OPTIMIZED Mobile Responsive Design */
 @media (max-width: 768px) {
     .container {
         padding: 0 15px;
     }
     
+    /* Optimized Mobile Header */
     .header .container {
-        flex-direction: column;
-        gap: 15px;
-        padding: 15px;
-    }
-    
-    .nav {
-        width: 100%;
-        justify-content: space-between;
-        gap: 20px;
-    }
-    
-    .nav-links {
-        gap: 15px;
+        padding: 10px 15px;
+        min-height: 56px;
+        gap: 10px;
     }
     
     .nav-brand h1 {
         font-size: 20px;
+        margin-right: auto;
+    }
+    
+    .nav {
+        gap: 12px;
+        flex-shrink: 0;
+    }
+    
+    .nav-links {
+        gap: 12px;
+    }
+    
+    .nav-link {
+        font-size: 14px;
+        padding: 4px 0;
+    }
+    
+    /* Compact auth section */
+    .auth-buttons {
+        gap: 6px;
+    }
+    
+    .auth-buttons .btn {
+        padding: 6px 12px;
+        font-size: 13px;
+    }
+    
+    .user-menu {
+        gap: 8px;
+    }
+    
+    .user-info {
+        gap: 6px;
+    }
+    
+    .user-avatar {
+        width: 28px;
+        height: 28px;
+    }
+    
+    .user-reputation {
+        font-size: 11px;
+    }
+    
+    /* Hide user name on very small screens */
+    #user-name {
+        display: none;
     }
     
     .main {
         padding: 20px 0;
+        min-height: calc(100vh - 56px);
     }
     
     .page-header {
@@ -616,11 +665,15 @@ body {
     .filters {
         flex-wrap: wrap;
         gap: 8px;
+        overflow-x: auto;
+        padding-bottom: 15px;
+        white-space: nowrap;
     }
     
     .filter-btn {
         padding: 6px 12px;
         font-size: 13px;
+        flex-shrink: 0;
     }
     
     .question-card {
@@ -712,30 +765,48 @@ body {
     .modal-body {
         padding: 20px;
     }
-    
-    .user-menu {
-        flex-wrap: wrap;
-        gap: 10px;
-    }
-    
-    .user-info {
-        flex-wrap: wrap;
-        gap: 8px;
-    }
-    
-    .auth-buttons {
-        flex-wrap: wrap;
-        gap: 8px;
-    }
 }
 
+/* Extra Small Mobile Devices */
 @media (max-width: 480px) {
     .container {
         padding: 0 10px;
     }
     
+    /* Ultra-compact header for small screens */
+    .header .container {
+        padding: 8px 10px;
+        min-height: 52px;
+    }
+    
     .nav-brand h1 {
         font-size: 18px;
+    }
+    
+    .nav-links {
+        gap: 8px;
+    }
+    
+    .nav-link {
+        font-size: 13px;
+    }
+    
+    .auth-buttons .btn {
+        padding: 5px 10px;
+        font-size: 12px;
+    }
+    
+    .user-avatar {
+        width: 26px;
+        height: 26px;
+    }
+    
+    .user-reputation {
+        font-size: 10px;
+    }
+    
+    .main {
+        min-height: calc(100vh - 52px);
     }
     
     .btn {
@@ -775,6 +846,49 @@ body {
     }
 }
 
+/* Extra optimizations for very small screens */
+@media (max-width: 360px) {
+    .header .container {
+        padding: 6px 8px;
+        min-height: 48px;
+    }
+    
+    .nav-brand h1 {
+        font-size: 16px;
+    }
+    
+    .nav-links {
+        gap: 6px;
+    }
+    
+    .nav-link {
+        font-size: 12px;
+    }
+    
+    .auth-buttons {
+        gap: 4px;
+    }
+    
+    .auth-buttons .btn {
+        padding: 4px 8px;
+        font-size: 11px;
+    }
+    
+    .user-menu {
+        gap: 6px;
+    }
+    
+    .user-avatar {
+        width: 24px;
+        height: 24px;
+    }
+    
+    /* Show only reputation number without "rep" text */
+    .user-reputation::after {
+        content: none;
+    }
+}
+
 /* Utility Classes */
 .text-center { text-align: center; }
 .text-muted { color: #666; }
@@ -782,3 +896,14 @@ body {
 .mb-10 { margin-bottom: 10px; }
 .mb-20 { margin-bottom: 20px; }
 .mt-20 { margin-top: 20px; }
+
+/* Additional mobile-specific utilities */
+@media (max-width: 768px) {
+    .mobile-hidden { display: none; }
+    .desktop-hidden { display: block; }
+}
+
+@media (min-width: 769px) {
+    .mobile-hidden { display: block; }
+    .desktop-hidden { display: none; }
+}

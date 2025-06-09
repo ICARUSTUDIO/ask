@@ -411,6 +411,18 @@ async function loadAnswers(questionId) {
             const timeAgo = getTimeAgo(answer.timestamp?.toDate());
             const authorPhoto = answer.authorPhoto || `https://ui-avatars.com/api/?name=${answer.authorName}&background=random`;
             const isAuthor = currentUser && answer.authorId === currentUser.uid;
+            
+            // Add delete button for answer author
+            const deleteButton = isAuthor ? 
+                `<button class="delete-btn" onclick="deleteAnswer('${answer.id}')" title="Delete answer">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <polyline points="3,6 5,6 21,6"></polyline>
+                        <path d="m19,6v14a2,2 0 0,1-2,2H7a2,2 0 0,1-2-2V6m3,0V4a2,2 0 0,1,2-2h4a2,2 0 0,1,2,2v2"></path>
+                        <line x1="10" y1="11" x2="10" y2="17"></line>
+                        <line x1="14" y1="11" x2="14" y2="17"></line>
+                    </svg>
+                </button>` : '';
+            
             return `
                 <div class="answer-card">
                     <div style="display: flex; align-items: flex-start; gap: 20px;">
@@ -427,6 +439,7 @@ async function loadAnswers(questionId) {
                                     <span>${escapeHtml(answer.authorName)}</span>
                                 </div>
                                 <span>${timeAgo}</span>
+                                ${deleteButton}
                             </div>
                         </div>
                     </div>
@@ -435,6 +448,64 @@ async function loadAnswers(questionId) {
         answersListElement.innerHTML = answersHTML;
     } catch (error) {
         console.error('Error loading answers:', error);
+    }
+}
+
+async function deleteAnswer(answerId) {
+    if (!currentUser) {
+        showLoginModal();
+        return;
+    }
+    
+    // Confirm deletion
+    if (!confirm('Are you sure you want to delete this answer? This action cannot be undone.')) {
+        return;
+    }
+    
+    try {
+        await db.runTransaction(async (transaction) => {
+            const answerRef = db.collection('answers').doc(answerId);
+            const answerDoc = await transaction.get(answerRef);
+            
+            if (!answerDoc.exists) {
+                throw new Error("Answer does not exist!");
+            }
+            
+            const answerData = answerDoc.data();
+            
+            // Check if current user is the author
+            if (answerData.authorId !== currentUser.uid) {
+                throw new Error("You can only delete your own answers.");
+            }
+            
+            // Delete the answer
+            transaction.delete(answerRef);
+            
+            // Update question answer count
+            const questionRef = db.collection('questions').doc(answerData.questionId);
+            transaction.update(questionRef, {
+                answerCount: firebase.firestore.FieldValue.increment(-1)
+            });
+            
+            // Update user stats and reputation (-1 for deleting answer)
+            const userRef = db.collection('users').doc(currentUser.uid);
+            transaction.update(userRef, {
+                answersGiven: firebase.firestore.FieldValue.increment(-1),
+                reputation: firebase.firestore.FieldValue.increment(-1)
+            });
+        });
+        
+        // Reload answers to reflect the deletion
+        loadAnswers(currentQuestionId);
+        
+        // Update displayed reputation
+        loadUserReputation();
+        
+        console.log('Answer deleted successfully');
+        
+    } catch (error) {
+        console.error('Error deleting answer:', error);
+        alert('Failed to delete answer: ' + error.message);
     }
 }
 

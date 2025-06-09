@@ -14,6 +14,7 @@ const questionsList = document.getElementById('questions-list');
 const homePage = document.getElementById('home-page');
 const askQuestionPage = document.getElementById('ask-question-page');
 const questionDetailPage = document.getElementById('question-detail-page');
+const profilePage = document.getElementById('profile-page');
 
 // Initialize App
 document.addEventListener('DOMContentLoaded', function() {
@@ -75,20 +76,16 @@ function closeAuthModal() {
     authModal.style.display = 'none';
     overlay.style.display = 'none';
     document.body.style.overflow = 'auto';
-    
-    // Clear form
     document.getElementById('email-auth-form').reset();
 }
 
 function showUserMenu() {
     authButtons.style.display = 'none';
-    userMenu.style.display = 'flex';
+    userMenu.style.display = 'block';
     
-    // Update user info
-    document.getElementById('user-name').textContent = currentUser.displayName || currentUser.email;
-    document.getElementById('user-avatar').src = currentUser.photoURL || 'https://via.placeholder.com/32x32?text=U';
+    document.getElementById('user-name').textContent = currentUser.displayName || currentUser.email.split('@')[0];
+    document.getElementById('user-avatar').src = currentUser.photoURL || `https://ui-avatars.com/api/?name=${currentUser.displayName || currentUser.email}&background=random`;
     
-    // Load user reputation
     loadUserReputation();
 }
 
@@ -142,7 +139,9 @@ async function createUserDocument(user) {
         
         if (!userDoc.exists) {
             const userData = {
-                displayName: user.displayName || user.email || 'Anonymous User',
+                displayName: user.displayName || user.email.split('@')[0],
+                firstName: '',
+                lastName: '',
                 email: user.email || '',
                 photoURL: user.photoURL || '',
                 reputation: 0,
@@ -150,6 +149,12 @@ async function createUserDocument(user) {
                 questionsAsked: 0,
                 answersGiven: 0
             };
+            
+            if (user.providerData.some(p => p.providerId === 'google.com') && user.displayName) {
+                const nameParts = user.displayName.split(' ');
+                userData.firstName = nameParts[0] || '';
+                userData.lastName = nameParts.slice(1).join(' ') || '';
+            }
             
             await userRef.set(userData);
             console.log('User document created successfully');
@@ -163,29 +168,14 @@ async function createUserDocument(user) {
 
 async function loadUserReputation() {
     if (!currentUser) return;
-    
     try {
         const userDoc = await db.collection('users').doc(currentUser.uid).get();
         if (userDoc.exists) {
-            const userData = userDoc.data();
-            const reputation = userData.reputation || 0;
-            const reputationElement = document.getElementById('user-rep');
-            if (reputationElement) {
-                reputationElement.textContent = reputation;
-            }
-            console.log('User reputation loaded:', reputation);
-        } else {
-            console.warn('User document does not exist, creating one...');
-            await createUserDocument(currentUser);
-            // Recursively call to load after creation
-            await loadUserReputation();
+            document.getElementById('user-rep').textContent = userDoc.data().reputation || 0;
         }
     } catch (error) {
         console.error('Error loading user reputation:', error);
-        const reputationElement = document.getElementById('user-rep');
-        if (reputationElement) {
-            reputationElement.textContent = '0';
-        }
+        document.getElementById('user-rep').textContent = '0';
     }
 }
 
@@ -194,6 +184,7 @@ function showHome() {
     homePage.style.display = 'block';
     askQuestionPage.style.display = 'none';
     questionDetailPage.style.display = 'none';
+    profilePage.style.display = 'none';
     loadQuestions();
 }
 
@@ -202,10 +193,10 @@ function showAskQuestion() {
         showLoginModal();
         return;
     }
-    
     homePage.style.display = 'none';
     askQuestionPage.style.display = 'block';
     questionDetailPage.style.display = 'none';
+    profilePage.style.display = 'none';
 }
 
 function showQuestionDetail(questionId) {
@@ -213,42 +204,97 @@ function showQuestionDetail(questionId) {
     homePage.style.display = 'none';
     askQuestionPage.style.display = 'none';
     questionDetailPage.style.display = 'block';
+    profilePage.style.display = 'none';
     loadQuestionDetail(questionId);
+}
+
+// Profile Page Functions
+function showProfilePage() {
+    if (!currentUser) {
+        showLoginModal();
+        return;
+    }
+    homePage.style.display = 'none';
+    askQuestionPage.style.display = 'none';
+    questionDetailPage.style.display = 'none';
+    profilePage.style.display = 'block';
+
+    toggleUserMenu(true); // Close dropdown
+    loadProfileData();
+}
+
+async function loadProfileData() {
+    if (!currentUser) return;
+    document.getElementById('profile-email').value = currentUser.email || '';
+    
+    try {
+        const userRef = db.collection('users').doc(currentUser.uid);
+        const userDoc = await userRef.get();
+        if (userDoc.exists) {
+            const userData = userDoc.data();
+            document.getElementById('profile-first-name').value = userData.firstName || '';
+            document.getElementById('profile-last-name').value = userData.lastName || '';
+            const photoURL = userData.photoURL || '';
+            document.getElementById('profile-photo-url').value = photoURL;
+            document.getElementById('profile-avatar-preview').src = photoURL || `https://ui-avatars.com/api/?name=${userData.displayName}&background=random&size=80`;
+        }
+    } catch (error) {
+        console.error('Error loading user profile data:', error);
+        alert('Could not load your profile data.');
+    }
+}
+
+async function updateUserProfile(event) {
+    event.preventDefault();
+    if (!currentUser) return;
+
+    const firstName = document.getElementById('profile-first-name').value.trim();
+    const lastName = document.getElementById('profile-last-name').value.trim();
+    const photoURL = document.getElementById('profile-photo-url').value.trim();
+    const newDisplayName = `${firstName} ${lastName}`.trim();
+
+    if (!newDisplayName) {
+        alert('Please provide at least a first or last name.');
+        return;
+    }
+
+    try {
+        await currentUser.updateProfile({ displayName: newDisplayName, photoURL: photoURL });
+        await db.collection('users').doc(currentUser.uid).update({
+            firstName: firstName,
+            lastName: lastName,
+            displayName: newDisplayName,
+            photoURL: photoURL
+        });
+
+        currentUser = auth.currentUser; // Re-fetch to get updated values
+        showUserMenu();
+        
+        alert('Profile updated successfully!');
+        showHome();
+    } catch (error) {
+        console.error('Error updating profile:', error);
+        alert('Failed to update profile: ' + error.message);
+    }
 }
 
 // Questions Functions
 async function loadQuestions(filter = 'newest') {
     try {
         questionsList.innerHTML = '<div class="loading">Loading questions...</div>';
-        
         let query = db.collection('questions');
-        
-        // Apply sorting based on filter
         switch (filter) {
-            case 'votes':
-                query = query.orderBy('voteCount', 'desc');
-                break;
-            case 'answers':
-                query = query.orderBy('answerCount', 'desc');
-                break;
-            default: // newest
-                query = query.orderBy('timestamp', 'desc');
+            case 'votes': query = query.orderBy('voteCount', 'desc'); break;
+            case 'answers': query = query.orderBy('answerCount', 'desc'); break;
+            default: query = query.orderBy('timestamp', 'desc');
         }
-        
         const snapshot = await query.limit(20).get();
-        
         if (snapshot.empty) {
             questionsList.innerHTML = '<div class="loading">No questions yet. Be the first to ask!</div>';
             return;
         }
-        
-        const questionsHTML = snapshot.docs.map(doc => {
-            const question = doc.data();
-            return createQuestionCard(doc.id, question);
-        }).join('');
-        
+        const questionsHTML = snapshot.docs.map(doc => createQuestionCard(doc.id, doc.data())).join('');
         questionsList.innerHTML = questionsHTML;
-        
     } catch (error) {
         console.error('Error loading questions:', error);
         questionsList.innerHTML = '<div class="loading">Error loading questions. Please try again.</div>';
@@ -257,27 +303,20 @@ async function loadQuestions(filter = 'newest') {
 
 function createQuestionCard(id, question) {
     const timeAgo = getTimeAgo(question.timestamp?.toDate());
-    const excerpt = question.body.length > 150 ? 
-        question.body.substring(0, 150) + '...' : question.body;
+    const excerpt = question.body.length > 150 ? question.body.substring(0, 150) + '...' : question.body;
+    const authorPhoto = question.authorPhoto || `https://ui-avatars.com/api/?name=${question.authorName}&background=random`;
     
     return `
         <div class="question-card" onclick="showQuestionDetail('${id}')">
             <div class="question-stats">
-                <div class="stat">
-                    <span class="stat-number">${question.voteCount || 0}</span>
-                    <span>votes</span>
-                </div>
-                <div class="stat">
-                    <span class="stat-number">${question.answerCount || 0}</span>
-                    <span>answers</span>
-                </div>
+                <div class="stat"><span class="stat-number">${question.voteCount || 0}</span><span>votes</span></div>
+                <div class="stat"><span class="stat-number">${question.answerCount || 0}</span><span>answers</span></div>
             </div>
             <h3 class="question-title">${escapeHtml(question.title)}</h3>
             <p class="question-excerpt">${escapeHtml(excerpt)}</p>
             <div class="question-meta">
                 <div class="question-author">
-                    <img src="${question.authorPhoto || 'https://via.placeholder.com/20x20?text=U'}" 
-                         alt="Author" class="author-avatar">
+                    <img src="${authorPhoto}" alt="Author" class="author-avatar">
                     <span>${escapeHtml(question.authorName)}</span>
                 </div>
                 <span class="question-time">${timeAgo}</span>
@@ -288,19 +327,10 @@ function createQuestionCard(id, question) {
 
 async function submitQuestion(event) {
     event.preventDefault();
-    
-    if (!currentUser) {
-        showLoginModal();
-        return;
-    }
-    
+    if (!currentUser) { showLoginModal(); return; }
     const title = document.getElementById('question-title').value.trim();
     const body = document.getElementById('question-body').value.trim();
-    
-    if (!title || !body) {
-        alert('Please fill in both title and body');
-        return;
-    }
+    if (!title || !body) { alert('Please fill in both title and body'); return; }
     
     try {
         const questionData = {
@@ -314,20 +344,19 @@ async function submitQuestion(event) {
             answerCount: 0,
             votes: {}
         };
-        
         const docRef = await db.collection('questions').add(questionData);
         
-        // Update user's question count
+        // Update user stats and reputation (+1 for asking a question)
         await db.collection('users').doc(currentUser.uid).update({
-            questionsAsked: firebase.firestore.FieldValue.increment(1)
+            questionsAsked: firebase.firestore.FieldValue.increment(1),
+            reputation: firebase.firestore.FieldValue.increment(1)
         });
         
-        console.log('Question posted:', docRef.id);
-        
-        // Clear form and redirect
         document.getElementById('ask-question-form').reset();
         showQuestionDetail(docRef.id);
         
+        // Update displayed reputation
+        loadUserReputation();
     } catch (error) {
         console.error('Error posting question:', error);
         alert('Error posting question. Please try again.');
@@ -337,51 +366,29 @@ async function submitQuestion(event) {
 async function loadQuestionDetail(questionId) {
     try {
         const questionDoc = await db.collection('questions').doc(questionId).get();
-        
         if (!questionDoc.exists) {
             document.getElementById('question-detail').innerHTML = '<p>Question not found.</p>';
             return;
         }
-        
         const question = questionDoc.data();
         const timeAgo = getTimeAgo(question.timestamp?.toDate());
-        
+        const isQuestionAuthor = currentUser && question.authorId === currentUser.uid;
         const questionHTML = `
             <div class="question-header">
                 <h1>${escapeHtml(question.title)}</h1>
-                <div class="question-meta">
-                    <span>Asked ${timeAgo} by ${escapeHtml(question.authorName)}</span>
-                </div>
+                <div class="question-meta"><span>Asked ${timeAgo} by ${escapeHtml(question.authorName)}</span></div>
             </div>
             <div style="display: flex; align-items: flex-start; gap: 20px;">
                 <div class="question-votes">
-                    <button class="vote-btn" onclick="voteQuestion('${questionId}', 1)" 
-                            ${!currentUser ? 'disabled' : ''}>▲</button>
+                    <button class="vote-btn" onclick="voteQuestion('${questionId}', 1)" ${!currentUser || isQuestionAuthor ? 'disabled' : ''}>▲</button>
                     <span class="vote-count">${question.voteCount || 0}</span>
-                    <button class="vote-btn" onclick="voteQuestion('${questionId}', -1)" 
-                            ${!currentUser ? 'disabled' : ''}>▼</button>
+                    <button class="vote-btn" onclick="voteQuestion('${questionId}', -1)" ${!currentUser || isQuestionAuthor ? 'disabled' : ''}>▼</button>
                 </div>
-                <div style="flex: 1;">
-                    <div class="question-body">
-                        ${escapeHtml(question.body).replace(/\n/g, '<br>')}
-                    </div>
-                </div>
-            </div>
-        `;
-        
+                <div style="flex: 1;"><div class="question-body">${escapeHtml(question.body).replace(/\n/g, '<br>')}</div></div>
+            </div>`;
         document.getElementById('question-detail').innerHTML = questionHTML;
-        
-        // Load answers
         loadAnswers(questionId);
-        
-        // Show/hide answer form based on authentication
-        const answerFormSection = document.getElementById('answer-form-section');
-        if (currentUser) {
-            answerFormSection.style.display = 'block';
-        } else {
-            answerFormSection.style.display = 'none';
-        }
-        
+        document.getElementById('answer-form-section').style.display = currentUser ? 'block' : 'none';
     } catch (error) {
         console.error('Error loading question detail:', error);
         document.getElementById('question-detail').innerHTML = '<p>Error loading question.</p>';
@@ -390,145 +397,52 @@ async function loadQuestionDetail(questionId) {
 
 async function loadAnswers(questionId) {
     try {
-        console.log('Loading answers for question:', questionId);
-        
-        const answersSnapshot = await db.collection('answers')
-            .where('questionId', '==', questionId)
-            .get();
-        
+        const answersSnapshot = await db.collection('answers').where('questionId', '==', questionId).get();
         const answerCount = answersSnapshot.size;
-        
-        // Safely update answers count
-        const answersCountElement = document.getElementById('answers-count');
-        if (answersCountElement) {
-            answersCountElement.textContent = `${answerCount} Answer${answerCount !== 1 ? 's' : ''}`;
-        }
-        
+        document.getElementById('answers-count').textContent = `${answerCount} Answer${answerCount !== 1 ? 's' : ''}`;
         const answersListElement = document.getElementById('answers-list');
-        if (!answersListElement) {
-            console.warn('answers-list element not found');
-            return;
-        }
-        
         if (answerCount === 0) {
             answersListElement.innerHTML = '<p class="text-muted">No answers yet. Be the first to answer!</p>';
             return;
         }
-        
-        // Get all answers and sort them manually with better error handling
-        const answersData = answersSnapshot.docs.map(doc => {
-            const data = doc.data();
-            return {
-                id: doc.id,
-                ...data,
-                // Ensure required fields have default values
-                voteCount: typeof data.voteCount === 'number' ? data.voteCount : 0,
-                timestamp: data.timestamp || null,
-                authorName: data.authorName || 'Anonymous',
-                authorPhoto: data.authorPhoto || 'https://via.placeholder.com/20x20?text=U',
-                body: data.body || ''
-            };
-        });
-        
-        // Sort by votes (descending) then by timestamp (ascending)
-        answersData.sort((a, b) => {
-            const aVotes = a.voteCount || 0;
-            const bVotes = b.voteCount || 0;
-            
-            if (bVotes !== aVotes) {
-                return bVotes - aVotes; // Higher votes first
-            }
-            
-            // If votes are equal, sort by timestamp (older first)
-            const aTime = a.timestamp?.toDate?.()?.getTime() || 0;
-            const bTime = b.timestamp?.toDate?.()?.getTime() || 0;
-            return aTime - bTime;
-        });
-        
+        const answersData = answersSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        answersData.sort((a, b) => (b.voteCount || 0) - (a.voteCount || 0));
         const answersHTML = answersData.map(answer => {
-            // Safe timestamp handling
-            let timeAgo = 'Unknown time';
-            try {
-                if (answer.timestamp && typeof answer.timestamp.toDate === 'function') {
-                    timeAgo = getTimeAgo(answer.timestamp.toDate());
-                }
-            } catch (timeError) {
-                console.warn('Error parsing timestamp for answer:', answer.id, timeError);
-                timeAgo = 'Some time ago';
-            }
-            
-            // Ensure we have valid data before rendering
-            const safeBody = answer.body ? escapeHtml(answer.body).replace(/\n/g, '<br>') : 'No content';
-            const safeAuthorName = answer.authorName ? escapeHtml(answer.authorName) : 'Anonymous';
-            
+            const timeAgo = getTimeAgo(answer.timestamp?.toDate());
+            const authorPhoto = answer.authorPhoto || `https://ui-avatars.com/api/?name=${answer.authorName}&background=random`;
+            const isAuthor = currentUser && answer.authorId === currentUser.uid;
             return `
                 <div class="answer-card">
                     <div style="display: flex; align-items: flex-start; gap: 20px;">
                         <div class="question-votes">
-                            <button class="vote-btn" onclick="voteAnswer('${answer.id}', 1)" 
-                                    ${!currentUser ? 'disabled' : ''}>▲</button>
-                            <span class="vote-count">${answer.voteCount}</span>
-                            <button class="vote-btn" onclick="voteAnswer('${answer.id}', -1)" 
-                                    ${!currentUser ? 'disabled' : ''}>▼</button>
+                            <button class="vote-btn" onclick="voteAnswer('${answer.id}', 1)" ${!currentUser || isAuthor ? 'disabled' : ''}>▲</button>
+                            <span class="vote-count">${answer.voteCount || 0}</span>
+                            <button class="vote-btn" onclick="voteAnswer('${answer.id}', -1)" ${!currentUser || isAuthor ? 'disabled' : ''}>▼</button>
                         </div>
                         <div style="flex: 1;">
-                            <div class="answer-body">
-                                ${safeBody}
-                            </div>
+                            <div class="answer-body">${escapeHtml(answer.body).replace(/\n/g, '<br>')}</div>
                             <div class="question-meta mt-20">
                                 <div class="question-author">
-                                    <img src="${answer.authorPhoto}" 
-                                         alt="Author" class="author-avatar">
-                                    <span>${safeAuthorName}</span>
+                                    <img src="${authorPhoto}" alt="Author" class="author-avatar">
+                                    <span>${escapeHtml(answer.authorName)}</span>
                                 </div>
                                 <span>${timeAgo}</span>
                             </div>
                         </div>
                     </div>
-                </div>
-            `;
+                </div>`;
         }).join('');
-        
         answersListElement.innerHTML = answersHTML;
-        
     } catch (error) {
         console.error('Error loading answers:', error);
-        
-        const answersListElement = document.getElementById('answers-list');
-        if (answersListElement) {
-            // More specific error handling
-            let errorMessage = 'Error loading answers';
-            if (error.code === 'permission-denied') {
-                errorMessage = 'Permission denied loading answers';
-            } else if (error.code === 'unavailable') {
-                errorMessage = 'Service temporarily unavailable';
-            }
-            
-            answersListElement.innerHTML = `
-                <p style="color: #c33; padding: 20px; background: #fee; border-radius: 4px;">
-                    ${errorMessage}: ${error.message}
-                    <br><button onclick="loadAnswers('${questionId}')" class="btn btn-outline" style="margin-top: 10px;">Try Again</button>
-                </p>
-            `;
-        }
-        
-        // Re-throw error to let calling function know it failed
-        throw error;
     }
 }
+
 async function submitAnswer(event) {
     event.preventDefault();
-    
-    if (!currentUser || !currentQuestionId) {
-        return;
-    }
-    
+    if (!currentUser || !currentQuestionId) { return; }
     const body = document.getElementById('answer-body').value.trim();
-    
-    if (!body) {
-        alert('Please write an answer');
-        return;
-    }
+    if (!body) { alert('Please write an answer'); return; }
     
     try {
         const answerData = {
@@ -544,226 +458,85 @@ async function submitAnswer(event) {
         
         await db.collection('answers').add(answerData);
         
-        // Update question's answer count
+        // Update question answer count
         await db.collection('questions').doc(currentQuestionId).update({
             answerCount: firebase.firestore.FieldValue.increment(1)
         });
         
-        // Update user's answer count
+        // Update user stats and reputation (+1 for answering a question)
         await db.collection('users').doc(currentUser.uid).update({
-            answersGiven: firebase.firestore.FieldValue.increment(1)
+            answersGiven: firebase.firestore.FieldValue.increment(1),
+            reputation: firebase.firestore.FieldValue.increment(1)
         });
         
-        // Clear form and reload answers
         document.getElementById('answer-form').reset();
         loadAnswers(currentQuestionId);
         
-        console.log('Answer posted successfully');
-        
+        // Update displayed reputation
+        loadUserReputation();
     } catch (error) {
         console.error('Error posting answer:', error);
         alert('Error posting answer. Please try again.');
     }
 }
 
-// Voting Functions
-async function voteQuestion(questionId, voteValue) {
-    if (!currentUser) {
-        showLoginModal();
-        return;
-    }
-    
-    try {
-        await vote('questions', questionId, voteValue);
-        // Reload question detail only if vote succeeded
-        await loadQuestionDetail(questionId);
-    } catch (error) {
-        console.error('Error voting on question:', error);
-        // vote() function already shows appropriate error message
-    }
-}
-
-async function voteAnswer(answerId, voteValue) {
-    if (!currentUser) {
-        showLoginModal();
-        return;
-    }
-    
-    try {
-        // Only proceed with reload if vote succeeds
-        await vote('answers', answerId, voteValue);
-        
-        // Reload answers - but handle failure gracefully
-        try {
-            await loadAnswers(currentQuestionId);
-        } catch (loadError) {
-            console.error('Failed to reload answers after successful vote:', loadError);
-            // Vote succeeded but reload failed - show a different message
-            alert('Vote recorded successfully, but failed to refresh the page. Please reload manually.');
-        }
-        
-    } catch (voteError) {
-        console.error('Error voting on answer:', voteError);
-        // vote() function already handles and shows the error message
-        // Don't show additional alert here
-    }
-}
-
-async function updateAuthorReputation(itemData, oldVote, newVote, collection) {
-    // Skip if no author or if user is voting on their own content
-    if (!itemData.authorId || itemData.authorId === currentUser.uid) {
-        return;
-    }
-    
-    const reputationChange = (newVote - oldVote) * (collection === 'questions' ? 5 : 10);
-    
-    // Skip if no reputation change
-    if (reputationChange === 0) {
-        return;
-    }
-    
-    try {
-        const userRef = db.collection('users').doc(itemData.authorId);
-        
-        // Use a transaction to ensure data consistency
-        await db.runTransaction(async (transaction) => {
-            const userDoc = await transaction.get(userRef);
-            
-            if (!userDoc.exists) {
-                console.warn('Author user document does not exist:', itemData.authorId);
-                // Create user document if it doesn't exist
-                await transaction.set(userRef, {
-                    displayName: 'Unknown User',
-                    email: '',
-                    photoURL: '',
-                    reputation: Math.max(0, reputationChange), // Don't allow negative reputation
-                    joinDate: firebase.firestore.FieldValue.serverTimestamp(),
-                    questionsAsked: 0,
-                    answersGiven: 0
-                });
-                console.log('Created missing user document with reputation:', reputationChange);
-            } else {
-                const currentReputation = userDoc.data().reputation || 0;
-                const newReputation = Math.max(0, currentReputation + reputationChange); // Don't allow negative reputation
-                
-                await transaction.update(userRef, {
-                    reputation: newReputation
-                });
-                console.log(`Reputation updated: ${currentReputation} -> ${newReputation} (change: ${reputationChange})`);
-            }
-        });
-        
-    } catch (reputationError) {
-        // Log reputation error but don't fail the vote
-        console.error('Error updating reputation (vote still succeeded):', reputationError);
-        
-        // Optionally show a non-blocking notification about reputation update failure
-        if (reputationError.code === 'permission-denied') {
-            console.warn('Permission denied when updating reputation - check Firestore rules');
-        }
-    }
-}
-
-
-async function vote(collection, documentId, voteValue) {
-    if (!currentUser) {
-        showLoginModal();
-        return;
-    }
-    
-    try {
-        const docRef = db.collection(collection).doc(documentId);
-        const doc = await docRef.get();
-        
-        if (!doc.exists) {
-            throw new Error('Content no longer exists');
-        }
-        
-        const data = doc.data();
-        const votes = data.votes || {};
-        const currentVote = votes[currentUser.uid] || 0;
-        
-        // Calculate new vote
-        let newVote = 0;
-        if (currentVote === voteValue) {
-            // User is removing their vote
-            newVote = 0;
-        } else {
-            // User is voting or changing vote
-            newVote = voteValue;
-        }
-        
-        // Update votes object
-        const updatedVotes = { ...votes };
-        if (newVote === 0) {
-            delete updatedVotes[currentUser.uid];
-        } else {
-            updatedVotes[currentUser.uid] = newVote;
-        }
-        
-        // Calculate new vote count
-        const newVoteCount = Object.values(updatedVotes).reduce((sum, vote) => sum + vote, 0);
-        
-        // Update document with vote data
-        await docRef.update({
-            votes: updatedVotes,
-            voteCount: newVoteCount
-        });
-        
-        console.log('Vote updated successfully');
-        
-        // Update author's reputation - improved error handling
-        await updateAuthorReputation(data, currentVote, newVote, collection);
-        
-    } catch (error) {
-        console.error('Error voting:', error);
-        
-        // Provide more specific error messages
-        let errorMessage = 'Error submitting vote. Please try again.';
-        
-        if (error.code === 'permission-denied') {
-            errorMessage = 'You do not have permission to vote on this item.';
-        } else if (error.code === 'not-found') {
-            errorMessage = 'The item you are trying to vote on no longer exists.';
-        } else if (error.code === 'unavailable') {
-            errorMessage = 'Service temporarily unavailable. Please try again.';
-        } else if (error.message === 'Content no longer exists') {
-            errorMessage = 'This content has been deleted.';
-        }
-        
-        alert(errorMessage);
-        throw error; // Re-throw to allow calling functions to handle if needed
-    }
-}
-
-// Filter Functions
-function filterQuestions(filter) {
-    // Update active filter button
-    document.querySelectorAll('.filter-btn').forEach(btn => btn.classList.remove('active'));
-    event.target.classList.add('active');
-    
-    loadQuestions(filter);
-}
-
 // Event Listeners
 function setupEventListeners() {
-    // Google Sign-in
+    // Auth
+    document.getElementById('login-btn').addEventListener('click', showLoginModal);
+    document.getElementById('signup-btn').addEventListener('click', showSignupModal);
+    document.getElementById('close-modal-btn').addEventListener('click', closeAuthModal);
+    document.getElementById('overlay').addEventListener('click', closeAuthModal);
+    document.getElementById('auth-switch-link').addEventListener('click', toggleAuthMode);
     document.getElementById('google-signin-btn').addEventListener('click', signInWithGoogle);
+
+    // Main Navigation
+    document.getElementById('home-link').addEventListener('click', showHome);
+    document.getElementById('ask-question-link').addEventListener('click', showAskQuestion);
+    document.getElementById('ask-question-btn-main').addEventListener('click', showAskQuestion);
+
+    // User Menu
+    document.getElementById('user-info-wrapper').addEventListener('click', () => toggleUserMenu());
+    document.getElementById('profile-link').addEventListener('click', showProfilePage);
+    document.getElementById('logout-link').addEventListener('click', logout);
     
-    // Email/Password Form
+    // Forms
     document.getElementById('email-auth-form').addEventListener('submit', function(e) {
         e.preventDefault();
         const email = document.getElementById('auth-email').value;
         const password = document.getElementById('auth-password').value;
         signInWithEmail(email, password);
     });
-    
-    // Ask Question Form
     document.getElementById('ask-question-form').addEventListener('submit', submitQuestion);
-    
-    // Answer Form
     document.getElementById('answer-form').addEventListener('submit', submitAnswer);
+    document.getElementById('profile-form').addEventListener('submit', updateUserProfile);
+    document.getElementById('cancel-question-btn').addEventListener('click', showHome);
+    document.getElementById('cancel-profile-btn').addEventListener('click', showHome);
+
+    // Filters
+    document.getElementById('filters').addEventListener('click', function(e) {
+        if (e.target.matches('.filter-btn')) {
+            filterQuestions(e.target.dataset.filter);
+        }
+    });
 }
+
+// User Menu Dropdown Logic
+function toggleUserMenu(forceClose = false) {
+    const dropdown = document.getElementById('user-menu-dropdown');
+    if (forceClose) {
+        dropdown.style.display = 'none';
+        return;
+    }
+    dropdown.style.display = dropdown.style.display === 'block' ? 'none' : 'block';
+}
+
+window.addEventListener('click', function(event) {
+    const userMenuNode = document.getElementById('user-menu');
+    if (userMenuNode && !userMenuNode.contains(event.target)) {
+        toggleUserMenu(true);
+    }
+});
 
 // Utility Functions
 function escapeHtml(text) {
@@ -774,14 +547,164 @@ function escapeHtml(text) {
 
 function getTimeAgo(date) {
     if (!date) return 'Unknown time';
-    
     const now = new Date();
     const diffInSeconds = Math.floor((now - date) / 1000);
-    
     if (diffInSeconds < 60) return 'just now';
-    if (diffInSeconds < 3600) return `${Math.floor(diffInSeconds / 60)} minutes ago`;
-    if (diffInSeconds < 86400) return `${Math.floor(diffInSeconds / 3600)} hours ago`;
-    if (diffInSeconds < 2592000) return `${Math.floor(diffInSeconds / 86400)} days ago`;
-    
+    if (diffInSeconds < 3600) return `${Math.floor(diffInSeconds / 60)}m ago`;
+    if (diffInSeconds < 86400) return `${Math.floor(diffInSeconds / 3600)}h ago`;
+    if (diffInSeconds < 2592000) return `${Math.floor(diffInSeconds / 86400)}d ago`;
     return date.toLocaleDateString();
+}
+
+// Voting Functions - SIMPLIFIED AND FIXED
+async function voteQuestion(questionId, voteValue) {
+    if (!currentUser) {
+        showLoginModal();
+        return;
+    }
+    
+    try {
+        await db.runTransaction(async (transaction) => {
+            const questionRef = db.collection('questions').doc(questionId);
+            const questionDoc = await transaction.get(questionRef);
+            
+            if (!questionDoc.exists) {
+                throw new Error("Question does not exist!");
+            }
+            
+            const questionData = questionDoc.data();
+            
+            // Prevent voting on own questions
+            if (questionData.authorId === currentUser.uid) {
+                throw new Error("You cannot vote on your own question.");
+            }
+            
+            const currentVote = questionData.votes[currentUser.uid] || 0;
+            let newVote = voteValue === currentVote ? 0 : voteValue; // Toggle vote
+            let voteChange = newVote - currentVote;
+            
+            // Update question
+            transaction.update(questionRef, {
+                voteCount: (questionData.voteCount || 0) + voteChange,
+                [`votes.${currentUser.uid}`]: newVote
+            });
+            
+            // Update author's reputation
+            if (questionData.authorId && voteChange !== 0) {
+                const authorRef = db.collection('users').doc(questionData.authorId);
+                let repChange = 0;
+                
+                if (voteChange === 1) { // New upvote or changing from downvote to upvote
+                    repChange = currentVote === -1 ? 8 : 5; // +8 if changing from downvote, +5 if new upvote
+                } else if (voteChange === -1) { // New downvote or changing from upvote to downvote
+                    repChange = currentVote === 1 ? -8 : -3; // -8 if changing from upvote, -3 if new downvote
+                }
+                
+                if (repChange !== 0) {
+                    transaction.update(authorRef, {
+                        reputation: firebase.firestore.FieldValue.increment(repChange)
+                    });
+                }
+            }
+        });
+        
+        // Reload the question to show updated vote count
+        loadQuestionDetail(questionId);
+        
+        // Update displayed reputation if current user's reputation changed
+        if (currentUser) {
+            loadUserReputation();
+        }
+        
+    } catch (error) {
+        console.error("Vote transaction failed: ", error);
+        alert(error.message);
+    }
+}
+
+
+async function voteAnswer(answerId, voteValue) {
+    if (!currentUser) {
+        showLoginModal();
+        return;
+    }
+    
+    try {
+        await db.runTransaction(async (transaction) => {
+            const answerRef = db.collection('answers').doc(answerId);
+            const answerDoc = await transaction.get(answerRef);
+            
+            if (!answerDoc.exists) {
+                throw new Error("Answer does not exist!");
+            }
+            
+            const answerData = answerDoc.data();
+            
+            // Prevent voting on own answers
+            if (answerData.authorId === currentUser.uid) {
+                throw new Error("You cannot vote on your own answer.");
+            }
+            
+            const currentVote = answerData.votes[currentUser.uid] || 0;
+            let newVote = voteValue === currentVote ? 0 : voteValue; // Toggle vote
+            let voteChange = newVote - currentVote;
+            
+            // Update answer
+            transaction.update(answerRef, {
+                voteCount: (answerData.voteCount || 0) + voteChange,
+                [`votes.${currentUser.uid}`]: newVote
+            });
+            
+            // Update author's reputation - FIXED LOGIC
+            if (answerData.authorId && voteChange !== 0) {
+                const authorRef = db.collection('users').doc(answerData.authorId);
+                let repChange = 0;
+                
+                // Fixed reputation calculation logic
+                if (voteChange === 1) { 
+                    // Adding an upvote or changing from downvote to upvote
+                    repChange = currentVote === -1 ? 8 : 5; // +8 if was downvote, +5 if new upvote
+                } else if (voteChange === -1) { 
+                    // Adding a downvote or changing from upvote to downvote
+                    repChange = currentVote === 1 ? -8 : -3; // -8 if was upvote, -3 if new downvote
+                } else if (voteChange === -1 && currentVote === 1) { 
+                    // This condition is redundant and will never be reached
+                    // because if voteChange is -1 and currentVote is 1, it's covered above
+                    repChange = -5;
+                } else if (voteChange === 1 && currentVote === -1) { 
+                    // This condition is also redundant
+                    repChange = 3;
+                }
+                
+                console.log(`Reputation change for answer vote: ${repChange} (voteChange: ${voteChange}, currentVote: ${currentVote})`);
+                
+                if (repChange !== 0) {
+                    transaction.update(authorRef, {
+                        reputation: firebase.firestore.FieldValue.increment(repChange)
+                    });
+                }
+            }
+        });
+        
+        // Reload the answers to show updated vote count
+        loadAnswers(currentQuestionId);
+        
+        // Update displayed reputation if current user's reputation changed
+        if (currentUser) {
+            loadUserReputation();
+        }
+        
+    } catch (error) {
+        console.error("Vote transaction failed: ", error);
+        alert(error.message);
+    }
+}
+
+function filterQuestions(filter) {
+    document.querySelectorAll('.filter-btn').forEach(btn => btn.classList.remove('active'));
+    const activeBtn = document.querySelector(`.filter-btn[data-filter="${filter}"]`);
+    if (activeBtn) {
+        activeBtn.classList.add('active');
+    }
+    loadQuestions(filter);
 }

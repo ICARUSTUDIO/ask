@@ -378,13 +378,15 @@ async function loadQuestionDetail(questionId) {
                 <h1>${escapeHtml(question.title)}</h1>
                 <div class="question-meta"><span>Asked ${timeAgo} by ${escapeHtml(question.authorName)}</span></div>
             </div>
-            <div style="display: flex; align-items: flex-start; gap: 20px;">
+            <div class="vote-body-wrapper">
                 <div class="question-votes">
                     <button class="vote-btn" onclick="voteQuestion('${questionId}', 1)" ${!currentUser || isQuestionAuthor ? 'disabled' : ''}>▲</button>
                     <span class="vote-count">${question.voteCount || 0}</span>
                     <button class="vote-btn" onclick="voteQuestion('${questionId}', -1)" ${!currentUser || isQuestionAuthor ? 'disabled' : ''}>▼</button>
                 </div>
-                <div style="flex: 1;"><div class="question-body">${escapeHtml(question.body).replace(/\n/g, '<br>')}</div></div>
+                <div class="content-body">
+                    <div class="question-body">${escapeHtml(question.body).replace(/\n/g, '<br>')}</div>
+                </div>
             </div>`;
         document.getElementById('question-detail').innerHTML = questionHTML;
         loadAnswers(questionId);
@@ -412,7 +414,6 @@ async function loadAnswers(questionId) {
             const authorPhoto = answer.authorPhoto || `https://ui-avatars.com/api/?name=${answer.authorName}&background=random`;
             const isAuthor = currentUser && answer.authorId === currentUser.uid;
             
-            // Add delete button for answer author
             const deleteButton = isAuthor ? 
                 `<button class="delete-btn" onclick="deleteAnswer('${answer.id}')" title="Delete answer">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -425,13 +426,13 @@ async function loadAnswers(questionId) {
             
             return `
                 <div class="answer-card">
-                    <div style="display: flex; align-items: flex-start; gap: 20px;">
+                    <div class="vote-body-wrapper">
                         <div class="question-votes">
                             <button class="vote-btn" onclick="voteAnswer('${answer.id}', 1)" ${!currentUser || isAuthor ? 'disabled' : ''}>▲</button>
                             <span class="vote-count">${answer.voteCount || 0}</span>
                             <button class="vote-btn" onclick="voteAnswer('${answer.id}', -1)" ${!currentUser || isAuthor ? 'disabled' : ''}>▼</button>
                         </div>
-                        <div style="flex: 1;">
+                        <div class="content-body">
                             <div class="answer-body">${escapeHtml(answer.body).replace(/\n/g, '<br>')}</div>
                             <div class="question-meta mt-20">
                                 <div class="question-author">
@@ -457,7 +458,6 @@ async function deleteAnswer(answerId) {
         return;
     }
     
-    // Confirm deletion
     if (!confirm('Are you sure you want to delete this answer? This action cannot be undone.')) {
         return;
     }
@@ -473,21 +473,17 @@ async function deleteAnswer(answerId) {
             
             const answerData = answerDoc.data();
             
-            // Check if current user is the author
             if (answerData.authorId !== currentUser.uid) {
                 throw new Error("You can only delete your own answers.");
             }
             
-            // Delete the answer
             transaction.delete(answerRef);
             
-            // Update question answer count
             const questionRef = db.collection('questions').doc(answerData.questionId);
             transaction.update(questionRef, {
                 answerCount: firebase.firestore.FieldValue.increment(-1)
             });
             
-            // Update user stats and reputation (-1 for deleting answer)
             const userRef = db.collection('users').doc(currentUser.uid);
             transaction.update(userRef, {
                 answersGiven: firebase.firestore.FieldValue.increment(-1),
@@ -495,12 +491,8 @@ async function deleteAnswer(answerId) {
             });
         });
         
-        // Reload answers to reflect the deletion
         loadAnswers(currentQuestionId);
-        
-        // Update displayed reputation
         loadUserReputation();
-        
         console.log('Answer deleted successfully');
         
     } catch (error) {
@@ -529,12 +521,10 @@ async function submitAnswer(event) {
         
         await db.collection('answers').add(answerData);
         
-        // Update question answer count
         await db.collection('questions').doc(currentQuestionId).update({
             answerCount: firebase.firestore.FieldValue.increment(1)
         });
         
-        // Update user stats and reputation (+1 for answering a question)
         await db.collection('users').doc(currentUser.uid).update({
             answersGiven: firebase.firestore.FieldValue.increment(1),
             reputation: firebase.firestore.FieldValue.increment(1)
@@ -542,8 +532,6 @@ async function submitAnswer(event) {
         
         document.getElementById('answer-form').reset();
         loadAnswers(currentQuestionId);
-        
-        // Update displayed reputation
         loadUserReputation();
     } catch (error) {
         console.error('Error posting answer:', error);
@@ -627,144 +615,81 @@ function getTimeAgo(date) {
     return date.toLocaleDateString();
 }
 
-// Voting Functions - SIMPLIFIED AND FIXED
+// Voting Functions
 async function voteQuestion(questionId, voteValue) {
-    if (!currentUser) {
-        showLoginModal();
-        return;
-    }
+    if (!currentUser) { showLoginModal(); return; }
     
     try {
         await db.runTransaction(async (transaction) => {
             const questionRef = db.collection('questions').doc(questionId);
             const questionDoc = await transaction.get(questionRef);
-            
-            if (!questionDoc.exists) {
-                throw new Error("Question does not exist!");
-            }
+            if (!questionDoc.exists) throw new Error("Question does not exist!");
             
             const questionData = questionDoc.data();
-            
-            // Prevent voting on own questions
-            if (questionData.authorId === currentUser.uid) {
-                throw new Error("You cannot vote on your own question.");
-            }
+            if (questionData.authorId === currentUser.uid) throw new Error("You cannot vote on your own question.");
             
             const currentVote = questionData.votes[currentUser.uid] || 0;
-            let newVote = voteValue === currentVote ? 0 : voteValue; // Toggle vote
+            let newVote = voteValue === currentVote ? 0 : voteValue;
             let voteChange = newVote - currentVote;
             
-            // Update question
             transaction.update(questionRef, {
-                voteCount: (questionData.voteCount || 0) + voteChange,
+                voteCount: firebase.firestore.FieldValue.increment(voteChange),
                 [`votes.${currentUser.uid}`]: newVote
             });
             
-            // Update author's reputation
             if (questionData.authorId && voteChange !== 0) {
                 const authorRef = db.collection('users').doc(questionData.authorId);
                 let repChange = 0;
-                
-                if (voteChange === 1) { // New upvote or changing from downvote to upvote
-                    repChange = currentVote === -1 ? 8 : 5; // +8 if changing from downvote, +5 if new upvote
-                } else if (voteChange === -1) { // New downvote or changing from upvote to downvote
-                    repChange = currentVote === 1 ? -8 : -3; // -8 if changing from upvote, -3 if new downvote
-                }
-                
+                if (voteChange === 1) repChange = currentVote === -1 ? 8 : 5;
+                else if (voteChange === -1) repChange = currentVote === 1 ? -8 : -3;
                 if (repChange !== 0) {
-                    transaction.update(authorRef, {
-                        reputation: firebase.firestore.FieldValue.increment(repChange)
-                    });
+                    transaction.update(authorRef, { reputation: firebase.firestore.FieldValue.increment(repChange) });
                 }
             }
         });
         
-        // Reload the question to show updated vote count
         loadQuestionDetail(questionId);
-        
-        // Update displayed reputation if current user's reputation changed
-        if (currentUser) {
-            loadUserReputation();
-        }
-        
+        loadUserReputation();
     } catch (error) {
         console.error("Vote transaction failed: ", error);
         alert(error.message);
     }
 }
 
-
 async function voteAnswer(answerId, voteValue) {
-    if (!currentUser) {
-        showLoginModal();
-        return;
-    }
+    if (!currentUser) { showLoginModal(); return; }
     
     try {
         await db.runTransaction(async (transaction) => {
             const answerRef = db.collection('answers').doc(answerId);
             const answerDoc = await transaction.get(answerRef);
-            
-            if (!answerDoc.exists) {
-                throw new Error("Answer does not exist!");
-            }
+            if (!answerDoc.exists) throw new Error("Answer does not exist!");
             
             const answerData = answerDoc.data();
-            
-            // Prevent voting on own answers
-            if (answerData.authorId === currentUser.uid) {
-                throw new Error("You cannot vote on your own answer.");
-            }
+            if (answerData.authorId === currentUser.uid) throw new Error("You cannot vote on your own answer.");
             
             const currentVote = answerData.votes[currentUser.uid] || 0;
-            let newVote = voteValue === currentVote ? 0 : voteValue; // Toggle vote
+            let newVote = voteValue === currentVote ? 0 : voteValue;
             let voteChange = newVote - currentVote;
             
-            // Update answer
             transaction.update(answerRef, {
-                voteCount: (answerData.voteCount || 0) + voteChange,
+                voteCount: firebase.firestore.FieldValue.increment(voteChange),
                 [`votes.${currentUser.uid}`]: newVote
             });
             
-            // Update author's reputation - FIXED LOGIC
             if (answerData.authorId && voteChange !== 0) {
                 const authorRef = db.collection('users').doc(answerData.authorId);
                 let repChange = 0;
-                
-                // Fixed reputation calculation logic
-                if (voteChange === 1) { 
-                    // Adding an upvote or changing from downvote to upvote
-                    repChange = currentVote === -1 ? 8 : 5; // +8 if was downvote, +5 if new upvote
-                } else if (voteChange === -1) { 
-                    // Adding a downvote or changing from upvote to downvote
-                    repChange = currentVote === 1 ? -8 : -3; // -8 if was upvote, -3 if new downvote
-                } else if (voteChange === -1 && currentVote === 1) { 
-                    // This condition is redundant and will never be reached
-                    // because if voteChange is -1 and currentVote is 1, it's covered above
-                    repChange = -5;
-                } else if (voteChange === 1 && currentVote === -1) { 
-                    // This condition is also redundant
-                    repChange = 3;
-                }
-                
-                console.log(`Reputation change for answer vote: ${repChange} (voteChange: ${voteChange}, currentVote: ${currentVote})`);
-                
+                if (voteChange === 1) repChange = currentVote === -1 ? 8 : 5;
+                else if (voteChange === -1) repChange = currentVote === 1 ? -8 : -3;
                 if (repChange !== 0) {
-                    transaction.update(authorRef, {
-                        reputation: firebase.firestore.FieldValue.increment(repChange)
-                    });
+                    transaction.update(authorRef, { reputation: firebase.firestore.FieldValue.increment(repChange) });
                 }
             }
         });
         
-        // Reload the answers to show updated vote count
         loadAnswers(currentQuestionId);
-        
-        // Update displayed reputation if current user's reputation changed
-        if (currentUser) {
-            loadUserReputation();
-        }
-        
+        loadUserReputation();
     } catch (error) {
         console.error("Vote transaction failed: ", error);
         alert(error.message);
@@ -779,3 +704,230 @@ function filterQuestions(filter) {
     }
     loadQuestions(filter);
 }
+```html:index.html
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DevQ&A - Collaborative Q&A Platform</title>
+    <link rel="stylesheet" href="style.css">
+    
+    <!-- Firebase SDK -->
+    <script src="[https://cdnjs.cloudflare.com/ajax/libs/firebase/9.23.0/firebase-app-compat.min.js](https://cdnjs.cloudflare.com/ajax/libs/firebase/9.23.0/firebase-app-compat.min.js)"></script>
+    <script src="[https://cdnjs.cloudflare.com/ajax/libs/firebase/9.23.0/firebase-auth-compat.min.js](https://cdnjs.cloudflare.com/ajax/libs/firebase/9.23.0/firebase-auth-compat.min.js)"></script>
+    <script src="[https://cdnjs.cloudflare.com/ajax/libs/firebase/9.23.0/firebase-firestore-compat.min.js](https://cdnjs.cloudflare.com/ajax/libs/firebase/9.23.0/firebase-firestore-compat.min.js)"></script>
+</head>
+<body>
+    <!-- Header -->
+    <header class="header">
+        <div class="container">
+            <div class="nav-brand">
+                <h1>DevQ&A</h1>
+            </div>
+            
+            <nav class="nav">
+                <div class="nav-links">
+                    <a href="#" id="home-link" class="nav-link">Home</a>
+                    <a href="#" id="ask-question-link" class="nav-link">Ask Question</a>
+                </div>
+                
+                <!-- Authentication Section -->
+                <div class="auth-section">
+                    <div id="auth-buttons" class="auth-buttons">
+                        <button id="login-btn" class="btn btn-outline">Login</button>
+                        <button id="signup-btn" class="btn btn-primary">Sign Up</button>
+                    </div>
+                    
+                    <!-- UPDATED: User Menu with Dropdown -->
+                    <div id="user-menu" class="user-menu" style="display: none;">
+                        <div id="user-info-wrapper" class="user-info-wrapper">
+                            <div class="user-info">
+                                <img id="user-avatar" src="" alt="User Avatar" class="user-avatar">
+                                <span id="user-name">User Name</span>
+                                <div class="user-reputation">
+                                    <span id="user-rep">0</span> rep
+                                </div>
+                            </div>
+                            <span class="dropdown-arrow">&#9662;</span>
+                        </div>
+                        <div id="user-menu-dropdown" class="user-menu-dropdown">
+                            <a href="#" id="profile-link" class="user-menu-link">Profile</a>
+                            <a href="#" id="logout-link" class="user-menu-link">Logout</a>
+                        </div>
+                    </div>
+                </div>
+            </nav>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="main">
+        <!-- Home Page -->
+        <div id="home-page" class="page">
+            <div class="container">
+                <div class="page-header">
+                    <h2>Recent Questions</h2>
+                    <button class="btn btn-primary" id="ask-question-btn-main">Ask Question</button>
+                </div>
+                
+                <div id="filters" class="filters">
+                    <button class="filter-btn active" data-filter="newest">Newest</button>
+                    <button class="filter-btn" data-filter="votes">Most Votes</button>
+                    <button class="filter-btn" data-filter="answers">Most Answers</button>
+                </div>
+                
+                <div id="questions-list" class="questions-list">
+                    <!-- Questions will be loaded here -->
+                    <div class="loading">Loading questions...</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Ask Question Page -->
+        <div id="ask-question-page" class="page" style="display: none;">
+            <div class="container">
+                <div class="page-header">
+                    <h2>Ask a Question</h2>
+                </div>
+                
+                <form id="ask-question-form" class="question-form">
+                    <div class="form-group">
+                        <label for="question-title">Question Title</label>
+                        <input type="text" id="question-title" required 
+                               placeholder="What's your programming question? Be specific.">
+                        <small>Be specific and imagine you're asking a question to another person</small>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="question-body">Question Details</label>
+                        <textarea id="question-body" rows="10" required 
+                                  placeholder="Provide all relevant details. Include any code, error messages, and what you've tried so far."></textarea>
+                        <small>Include all the information someone would need to answer your question</small>
+                    </div>
+                    
+                    <div class="form-actions">
+                        <button type="button" class="btn btn-outline" id="cancel-question-btn">Cancel</button>
+                        <button type="submit" class="btn btn-primary">Post Question</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <!-- Question Detail Page -->
+        <div id="question-detail-page" class="page" style="display: none;">
+            <div class="container">
+                <div id="question-detail" class="question-detail">
+                    <!-- Question details will be loaded here -->
+                </div>
+                
+                <div id="answers-section" class="answers-section">
+                    <h3 id="answers-count">0 Answers</h3>
+                    <div id="answers-list" class="answers-list">
+                        <!-- Answers will be loaded here -->
+                    </div>
+                </div>
+                
+                <div id="answer-form-section" class="answer-form-section">
+                    <h3>Your Answer</h3>
+                    <form id="answer-form" class="answer-form">
+                        <div class="form-group">
+                            <textarea id="answer-body" rows="8" required 
+                                      placeholder="Write your answer here..."></textarea>
+                        </div>
+                        <div class="form-actions">
+                            <button type="submit" class="btn btn-primary">Post Answer</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+        
+        <!-- NEW: Profile Page -->
+        <div id="profile-page" class="page" style="display: none;">
+            <div class="container">
+                <div class="page-header">
+                    <h2>Edit Your Profile</h2>
+                </div>
+
+                <form id="profile-form" class="profile-form">
+                    <div class="form-group">
+                        <label for="profile-email">Email</label>
+                        <input type="email" id="profile-email" disabled>
+                        <small>Email address cannot be changed.</small>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="profile-first-name">First Name</label>
+                        <input type="text" id="profile-first-name" placeholder="Enter your first name">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="profile-last-name">Last Name</label>
+                        <input type="text" id="profile-last-name" placeholder="Enter your last name">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>Profile Picture</label>
+                        <div class="profile-picture-section">
+                             <img id="profile-avatar-preview" src="" alt="Avatar Preview" class="profile-avatar-preview">
+                             <input type="text" id="profile-photo-url" placeholder="Enter image URL for your profile picture">
+                        </div>
+                         <small>Provide a direct URL to an image (e.g., from Imgur, Gravatar).</small>
+                    </div>
+
+                    <div class="form-actions">
+                        <button type="button" class="btn btn-outline" id="cancel-profile-btn">Cancel</button>
+                        <button type="submit" class="btn btn-primary">Save Changes</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </main>
+
+    <!-- Auth Modals -->
+    <div id="auth-modal" class="modal" style="display: none;">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 id="auth-modal-title">Login</h3>
+                <button class="close-btn" id="close-modal-btn">&times;</button>
+            </div>
+            
+            <div class="modal-body">
+                <!-- Google Sign In -->
+                <button id="google-signin-btn" class="btn btn-google">
+                    <img src="data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTgiIGhlaWdodD0iMTgiIHZpZXdCb3g9IjAgMCAxOCAxOCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHBhdGggZD0iTTE3LjY0IDkuMjA0ODJDMTC3NjQgOC41NjUzMiAxNy41MjQ5IDcuOTUxMDcgMTcuMzMxOSA3LjMxNTE0SDE5LjAxVjguMzY5NjVIMTYuMTMxMkMxNS44MDcgOC45MzUzOCAxNS40MTk0IDkuNDI4NjQgMTQuOTkyMSA5LjgyNzI2TDE0Ljk5MjEgMTAuMzUxOEgxNi4zMTA4QzE2Ljg5NTcgOS4wNzUwMSAxNy4zMzE5IDcuNjkyOTIgMTcuMzMxOSA2LjEzNjM2VjUuODY5NDJIMTC8MTcuNjQgOS4yMDQ4MloiIGZpbGw9IiM0Mjg1RjQiLz4KPHBhdGggZD0iTTkgMTZDMTEuNjMgMTYgMTMuODEgMTQuODkgMTUuMjQgMTIuOTJMTMuMjQgMTEuNkMxMi41NCAxMi4yMyAxMS41OCAxMi42NiAxMCAxMi42NkM4LjQyIDEyLjY2IDcuNTUgMTEuNTkgNy4yNCAxMC4yN0g1LjIxVjEwLjgxQzYuNDcgMTMuMzEgOC40OSAxNiAxMCAxNloiIGZpbGw9IiMzNEE4NTMiLz4KPHBhdGggZD0iTTcuMjQgMTAuMjdDNi45MyA5LjYxIDYuOTMgOC44NCA3LjI0IDguMThWNy42NEg1LjIxQzQuNTQgOC45NyA0LjU0IDEwLjQ4IDUuMjEgMTEuODFMNy4yNCAxMC4yN1oiIGZpbGw9IiNGQkJDMDUiLz4KPHBhdGggZD0iTTEwIDYuNjdDMTEuNjYgNi42NyAxMy4xIDcuMjYgMTQuMTkgOC4zTDE1Ljk5IDYuNUMxNC4zNCA1LjAzIDEyLjE5IDQuMTcgMTAgNC4xN0M4LjQ5IDQuMTcgNi40NyA2Ljg2IDUuMjEgOS4zNkw3LjI0IDEwLjkwNUM3LjU1IDkuNjIgOC40MiA4LjU1IDEwIDguNTVaIiBmaWxsPSIjRUE0MzM1Ii8+Cjwvc3ZnPgo=" alt="Google">
+                    Continue with Google
+                </button>
+                
+                <div class="divider">
+                    <span>or</span>
+                </div>
+                
+                <!-- Email/Password Form -->
+                <form id="email-auth-form">
+                    <div class="form-group">
+                        <input type="email" id="auth-email" required placeholder="Email">
+                    </div>
+                    <div class="form-group">
+                        <input type="password" id="auth-password" required placeholder="Password">
+                    </div>
+                    <button type="submit" class="btn btn-primary" id="auth-submit-btn">Login</button>
+                </form>
+                
+                <div class="auth-switch">
+                    <span id="auth-switch-text">Don't have an account?</span>
+                    <a href="#" id="auth-switch-link">Sign up</a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Overlay -->
+    <div id="overlay" class="overlay" style="display: none;"></div>
+
+    <script src="firebase-config.js"></script>
+    <script src="app.js"></script>
+</body>
+</html>
+```

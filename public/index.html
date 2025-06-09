@@ -21,26 +21,33 @@
             
             <nav class="nav">
                 <div class="nav-links">
-                    <a href="#" class="nav-link" onclick="showHome()">Home</a>
-                    <a href="#" class="nav-link" onclick="showAskQuestion()">Ask Question</a>
+                    <a href="#" id="home-link" class="nav-link">Home</a>
+                    <a href="#" id="ask-question-link" class="nav-link">Ask Question</a>
                 </div>
                 
                 <!-- Authentication Section -->
                 <div class="auth-section">
                     <div id="auth-buttons" class="auth-buttons">
-                        <button class="btn btn-outline" onclick="showLoginModal()">Login</button>
-                        <button class="btn btn-primary" onclick="showSignupModal()">Sign Up</button>
+                        <button id="login-btn" class="btn btn-outline">Login</button>
+                        <button id="signup-btn" class="btn btn-primary">Sign Up</button>
                     </div>
                     
+                    <!-- UPDATED: User Menu with Dropdown -->
                     <div id="user-menu" class="user-menu" style="display: none;">
-                        <div class="user-info">
-                            <img id="user-avatar" src="" alt="User Avatar" class="user-avatar">
-                            <span id="user-name">User Name</span>
-                            <div class="user-reputation">
-                                <span id="user-rep">0</span> rep
+                        <div id="user-info-wrapper" class="user-info-wrapper">
+                            <div class="user-info">
+                                <img id="user-avatar" src="" alt="User Avatar" class="user-avatar">
+                                <span id="user-name">User Name</span>
+                                <div class="user-reputation">
+                                    <span id="user-rep">0</span> rep
+                                </div>
                             </div>
+                            <span class="dropdown-arrow">&#9662;</span>
                         </div>
-                        <button class="btn btn-outline" onclick="logout()">Logout</button>
+                        <div id="user-menu-dropdown" class="user-menu-dropdown">
+                            <a href="#" id="profile-link" class="user-menu-link">Profile</a>
+                            <a href="#" id="logout-link" class="user-menu-link">Logout</a>
+                        </div>
                     </div>
                 </div>
             </nav>
@@ -54,13 +61,13 @@
             <div class="container">
                 <div class="page-header">
                     <h2>Recent Questions</h2>
-                    <button class="btn btn-primary" onclick="showAskQuestion()">Ask Question</button>
+                    <button class="btn btn-primary" id="ask-question-btn-main">Ask Question</button>
                 </div>
                 
-                <div class="filters">
-                    <button class="filter-btn active" onclick="filterQuestions('newest')">Newest</button>
-                    <button class="filter-btn" onclick="filterQuestions('votes')">Most Votes</button>
-                    <button class="filter-btn" onclick="filterQuestions('answers')">Most Answers</button>
+                <div id="filters" class="filters">
+                    <button class="filter-btn active" data-filter="newest">Newest</button>
+                    <button class="filter-btn" data-filter="votes">Most Votes</button>
+                    <button class="filter-btn" data-filter="answers">Most Answers</button>
                 </div>
                 
                 <div id="questions-list" class="questions-list">
@@ -93,7 +100,7 @@
                     </div>
                     
                     <div class="form-actions">
-                        <button type="button" class="btn btn-outline" onclick="showHome()">Cancel</button>
+                        <button type="button" class="btn btn-outline" id="cancel-question-btn">Cancel</button>
                         <button type="submit" class="btn btn-primary">Post Question</button>
                     </div>
                 </form>
@@ -128,6 +135,47 @@
                 </div>
             </div>
         </div>
+        
+        <!-- NEW: Profile Page -->
+        <div id="profile-page" class="page" style="display: none;">
+            <div class="container">
+                <div class="page-header">
+                    <h2>Edit Your Profile</h2>
+                </div>
+
+                <form id="profile-form" class="profile-form">
+                    <div class="form-group">
+                        <label for="profile-email">Email</label>
+                        <input type="email" id="profile-email" disabled>
+                        <small>Email address cannot be changed.</small>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="profile-first-name">First Name</label>
+                        <input type="text" id="profile-first-name" placeholder="Enter your first name">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="profile-last-name">Last Name</label>
+                        <input type="text" id="profile-last-name" placeholder="Enter your last name">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>Profile Picture</label>
+                        <div class="profile-picture-section">
+                             <img id="profile-avatar-preview" src="" alt="Avatar Preview" class="profile-avatar-preview">
+                             <input type="text" id="profile-photo-url" placeholder="Enter image URL for your profile picture">
+                        </div>
+                         <small>Provide a direct URL to an image (e.g., from Imgur, Gravatar).</small>
+                    </div>
+
+                    <div class="form-actions">
+                        <button type="button" class="btn btn-outline" id="cancel-profile-btn">Cancel</button>
+                        <button type="submit" class="btn btn-primary">Save Changes</button>
+                    </div>
+                </form>
+            </div>
+        </div>
     </main>
 
     <!-- Auth Modals -->
@@ -135,7 +183,7 @@
         <div class="modal-content">
             <div class="modal-header">
                 <h3 id="auth-modal-title">Login</h3>
-                <button class="close-btn" onclick="closeAuthModal()">&times;</button>
+                <button class="close-btn" id="close-modal-btn">&times;</button>
             </div>
             
             <div class="modal-body">
@@ -162,14 +210,14 @@
                 
                 <div class="auth-switch">
                     <span id="auth-switch-text">Don't have an account?</span>
-                    <a href="#" id="auth-switch-link" onclick="toggleAuthMode()">Sign up</a>
+                    <a href="#" id="auth-switch-link">Sign up</a>
                 </div>
             </div>
         </div>
     </div>
 
     <!-- Overlay -->
-    <div id="overlay" class="overlay" style="display: none;" onclick="closeAuthModal()"></div>
+    <div id="overlay" class="overlay" style="display: none;"></div>
 
     <script src="firebase-config.js"></script>
     <script src="app.js"></script>

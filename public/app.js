@@ -2,13 +2,17 @@
 let currentUser = null;
 let currentQuestionId = null;
 let isSignupMode = false;
+let confirmCallback = null; // For the custom confirm modal
 
 // DOM Elements
 const authButtons = document.getElementById('auth-buttons');
 const userMenu = document.getElementById('user-menu');
 const authModal = document.getElementById('auth-modal');
+const confirmModal = document.getElementById('confirm-modal');
 const overlay = document.getElementById('overlay');
 const questionsList = document.getElementById('questions-list');
+const alertContainer = document.getElementById('alert-container');
+
 
 // Page Elements
 const homePage = document.getElementById('home-page');
@@ -30,6 +34,10 @@ document.addEventListener('DOMContentLoaded', function() {
             currentUser = null;
             showAuthButtons();
         }
+        // Reload content that depends on auth state
+        if(currentQuestionId) {
+            loadQuestionDetail(currentQuestionId);
+        }
     });
     
     // Load initial questions
@@ -39,14 +47,50 @@ document.addEventListener('DOMContentLoaded', function() {
     setupEventListeners();
 });
 
-// Authentication Functions
+// --- Alert/Notification Functions ---
+function showAlert(message, type = 'error', duration = 3000) {
+    const alertElement = document.createElement('div');
+    alertElement.className = `alert alert-${type}`;
+    alertElement.textContent = message;
+    
+    alertContainer.appendChild(alertElement);
+    
+    // Animate in
+    setTimeout(() => {
+        alertElement.classList.add('show');
+    }, 10);
+
+    // Animate out and remove
+    setTimeout(() => {
+        alertElement.classList.remove('show');
+        alertElement.addEventListener('transitionend', () => {
+            alertElement.remove();
+        });
+    }, duration);
+}
+
+
+// --- Modal Functions ---
+
+function showModal(modalElement) {
+    modalElement.style.display = 'flex';
+    overlay.style.display = 'block';
+    document.body.style.overflow = 'hidden';
+}
+
+function closeModal(modalElement) {
+    modalElement.style.display = 'none';
+    overlay.style.display = 'none';
+    document.body.style.overflow = 'auto';
+}
+
 function showLoginModal() {
     isSignupMode = false;
     document.getElementById('auth-modal-title').textContent = 'Login';
     document.getElementById('auth-submit-btn').textContent = 'Login';
     document.getElementById('auth-switch-text').textContent = "Don't have an account?";
     document.getElementById('auth-switch-link').textContent = 'Sign up';
-    showModal();
+    showModal(authModal);
 }
 
 function showSignupModal() {
@@ -55,8 +99,28 @@ function showSignupModal() {
     document.getElementById('auth-submit-btn').textContent = 'Sign Up';
     document.getElementById('auth-switch-text').textContent = 'Already have an account?';
     document.getElementById('auth-switch-link').textContent = 'Login';
-    showModal();
+    showModal(authModal);
 }
+
+function closeAuthModal() {
+    closeModal(authModal);
+    document.getElementById('email-auth-form').reset();
+}
+
+// Reusable confirmation modal
+function showConfirmModal(text, onConfirm) {
+    document.getElementById('confirm-modal-text').textContent = text;
+    confirmCallback = onConfirm;
+    showModal(confirmModal);
+}
+
+function closeConfirmModal() {
+    closeModal(confirmModal);
+    confirmCallback = null;
+}
+
+
+// --- Authentication & User Functions ---
 
 function toggleAuthMode() {
     if (isSignupMode) {
@@ -64,19 +128,6 @@ function toggleAuthMode() {
     } else {
         showSignupModal();
     }
-}
-
-function showModal() {
-    authModal.style.display = 'flex';
-    overlay.style.display = 'block';
-    document.body.style.overflow = 'hidden';
-}
-
-function closeAuthModal() {
-    authModal.style.display = 'none';
-    overlay.style.display = 'none';
-    document.body.style.overflow = 'auto';
-    document.getElementById('email-auth-form').reset();
 }
 
 function showUserMenu() {
@@ -97,27 +148,27 @@ function showAuthButtons() {
 async function signInWithGoogle() {
     try {
         const result = await auth.signInWithPopup(googleProvider);
-        console.log('Google sign-in successful:', result.user);
+        showAlert(`Welcome, ${result.user.displayName}!`, 'success');
         closeAuthModal();
     } catch (error) {
         console.error('Google sign-in error:', error);
-        alert('Google sign-in failed: ' + error.message);
+        showAlert('Google sign-in failed. Please try again.');
     }
 }
 
 async function signInWithEmail(email, password) {
     try {
         if (isSignupMode) {
-            const result = await auth.createUserWithEmailAndPassword(email, password);
-            console.log('Sign-up successful:', result.user);
+            await auth.createUserWithEmailAndPassword(email, password);
+             showAlert('Account created successfully! Welcome.', 'success');
         } else {
-            const result = await auth.signInWithEmailAndPassword(email, password);
-            console.log('Sign-in successful:', result.user);
+            await auth.signInWithEmailAndPassword(email, password);
+            showAlert('Logged in successfully!', 'success');
         }
         closeAuthModal();
     } catch (error) {
         console.error('Email auth error:', error);
-        alert('Authentication failed: ' + error.message);
+        showAlert(getFriendlyAuthError(error));
     }
 }
 
@@ -125,13 +176,14 @@ async function logout() {
     try {
         await auth.signOut();
         showHome();
+        showAlert('You have been logged out.', 'success');
         console.log('User signed out');
     } catch (error) {
         console.error('Logout error:', error);
+        showAlert('Error logging out. Please try again.');
     }
 }
 
-// User Management
 async function createUserDocument(user) {
     try {
         const userRef = db.collection('users').doc(user.uid);
@@ -157,12 +209,10 @@ async function createUserDocument(user) {
             }
             
             await userRef.set(userData);
-            console.log('User document created successfully');
-        } else {
-            console.log('User document already exists');
         }
     } catch (error) {
         console.error('Error creating user document:', error);
+        showAlert('There was an issue setting up your account.');
     }
 }
 
@@ -179,57 +229,56 @@ async function loadUserReputation() {
     }
 }
 
-// Navigation Functions
+
+// --- Navigation Functions ---
+function showPage(pageElement) {
+    [homePage, askQuestionPage, questionDetailPage, profilePage].forEach(page => {
+        page.style.display = 'none';
+    });
+    pageElement.style.display = 'block';
+}
+
 function showHome() {
-    homePage.style.display = 'block';
-    askQuestionPage.style.display = 'none';
-    questionDetailPage.style.display = 'none';
-    profilePage.style.display = 'none';
+    showPage(homePage);
+    currentQuestionId = null;
     loadQuestions();
 }
 
 function showAskQuestion() {
-    if (!currentUser) {
-        showLoginModal();
-        return;
+    if (!currentUser) { 
+        showAlert('Please log in to ask a question.');
+        showLoginModal(); 
+        return; 
     }
-    homePage.style.display = 'none';
-    askQuestionPage.style.display = 'block';
-    questionDetailPage.style.display = 'none';
-    profilePage.style.display = 'none';
+    showPage(askQuestionPage);
+    fetchAllUsers(); // Fetch users for mention suggestions
 }
 
 function showQuestionDetail(questionId) {
     currentQuestionId = questionId;
-    homePage.style.display = 'none';
-    askQuestionPage.style.display = 'none';
-    questionDetailPage.style.display = 'block';
-    profilePage.style.display = 'none';
+    showPage(questionDetailPage);
     loadQuestionDetail(questionId);
 }
 
-// Profile Page Functions
 function showProfilePage() {
-    if (!currentUser) {
+    if (!currentUser) { 
+        showAlert('Please log in to view your profile.');
         showLoginModal();
-        return;
+        return; 
     }
-    homePage.style.display = 'none';
-    askQuestionPage.style.display = 'none';
-    questionDetailPage.style.display = 'none';
-    profilePage.style.display = 'block';
-
+    showPage(profilePage);
     toggleUserMenu(true); // Close dropdown
     loadProfileData();
 }
 
+
+// --- Profile Page Functions ---
 async function loadProfileData() {
     if (!currentUser) return;
     document.getElementById('profile-email').value = currentUser.email || '';
     
     try {
-        const userRef = db.collection('users').doc(currentUser.uid);
-        const userDoc = await userRef.get();
+        const userDoc = await db.collection('users').doc(currentUser.uid).get();
         if (userDoc.exists) {
             const userData = userDoc.data();
             document.getElementById('profile-first-name').value = userData.firstName || '';
@@ -240,7 +289,7 @@ async function loadProfileData() {
         }
     } catch (error) {
         console.error('Error loading user profile data:', error);
-        alert('Could not load your profile data.');
+        showAlert('Could not load your profile information.');
     }
 }
 
@@ -253,32 +302,190 @@ async function updateUserProfile(event) {
     const photoURL = document.getElementById('profile-photo-url').value.trim();
     const newDisplayName = `${firstName} ${lastName}`.trim();
 
-    if (!newDisplayName) {
-        alert('Please provide at least a first or last name.');
-        return;
+    if (!newDisplayName) { 
+        showAlert('Please provide at least a first or last name.'); 
+        return; 
     }
 
     try {
         await currentUser.updateProfile({ displayName: newDisplayName, photoURL: photoURL });
         await db.collection('users').doc(currentUser.uid).update({
-            firstName: firstName,
-            lastName: lastName,
-            displayName: newDisplayName,
-            photoURL: photoURL
+            firstName, lastName, displayName: newDisplayName, photoURL
         });
 
         currentUser = auth.currentUser; // Re-fetch to get updated values
         showUserMenu();
-        
-        alert('Profile updated successfully!');
         showHome();
+        showAlert('Profile updated successfully!', 'success');
     } catch (error) {
         console.error('Error updating profile:', error);
-        alert('Failed to update profile: ' + error.message);
+        showAlert('Failed to update profile. Please try again.');
     }
 }
 
-// Questions Functions
+// --- Mention/Tagging Feature ---
+
+let allUsers = []; // Cache for user data
+let mentionsPopup;
+let questionBodyTextarea;
+let currentMentionTerm = null; // The text after '@' we are searching for
+let activeMentionIndex = -1;
+let mentionStartIndex = -1; // Position of '@' in the textarea
+
+async function fetchAllUsers() {
+    if (allUsers.length > 0) return; // Don't re-fetch if already populated
+    try {
+        const snapshot = await db.collection('users').get();
+        allUsers = snapshot.docs.map(doc => ({
+            id: doc.id,
+            displayName: doc.data().displayName,
+            reputation: doc.data().reputation || 0,
+            photoURL: doc.data().photoURL || `https://ui-avatars.com/api/?name=${doc.data().displayName}&background=random`
+        }));
+        // Sort by reputation to show high-rep users first in suggestions
+        allUsers.sort((a, b) => (b.reputation || 0) - (a.reputation || 0));
+        console.log(`Fetched ${allUsers.length} users for tagging.`);
+    } catch (error) {
+        console.error('Error fetching users for mentions:', error);
+    }
+}
+
+function handleMentionInput(e) {
+    const textarea = e.target;
+    const cursorPos = textarea.selectionStart;
+    const textBeforeCursor = textarea.value.substring(0, cursorPos);
+    // FIXED: Updated regex to include dots and hyphens in usernames
+    const mentionMatch = textBeforeCursor.match(/@([\w.-]*)$/);
+
+    if (mentionMatch) {
+        mentionStartIndex = mentionMatch.index;
+        currentMentionTerm = mentionMatch[1].toLowerCase();
+        
+        const filteredUsers = allUsers.filter(user =>
+            user.displayName.toLowerCase().includes(currentMentionTerm)
+        );
+
+        if (filteredUsers.length > 0) {
+            showMentionsPopup(filteredUsers, textarea);
+        } else {
+            hideMentionsPopup();
+        }
+    } else {
+        hideMentionsPopup();
+    }
+}
+
+function showMentionsPopup(users, textarea) {
+    const rect = textarea.getBoundingClientRect();
+    mentionsPopup.style.left = `${rect.left}px`;
+    mentionsPopup.style.top = `${rect.bottom + window.scrollY}px`;
+    
+    mentionsPopup.innerHTML = users.slice(0, 5).map((user, index) => `
+        <div class="mention-item" data-username="${escapeHtml(user.displayName)}" data-index="${index}">
+            <img src="${user.photoURL}" alt="${escapeHtml(user.displayName)}">
+            <span class="mention-name">${escapeHtml(user.displayName)}</span>
+            <span class="mention-rep">${user.reputation} rep</span>
+        </div>
+    `).join('');
+
+    mentionsPopup.style.display = 'block';
+    activeMentionIndex = -1;
+
+    mentionsPopup.querySelectorAll('.mention-item').forEach(item => {
+        item.addEventListener('click', () => {
+            selectMention(item.dataset.username);
+        });
+    });
+}
+
+function hideMentionsPopup() {
+    if (mentionsPopup && mentionsPopup.style.display === 'block') {
+        mentionsPopup.style.display = 'none';
+        currentMentionTerm = null;
+        activeMentionIndex = -1;
+        mentionStartIndex = -1;
+    }
+}
+
+function selectMention(username) {
+    const textarea = questionBodyTextarea;
+    const text = textarea.value;
+    const textBefore = text.substring(0, mentionStartIndex);
+    const textAfter = text.substring(textarea.selectionStart);
+    
+    textarea.value = `${textBefore}@${username} ${textAfter}`;
+    
+    hideMentionsPopup();
+    textarea.focus();
+    const newCursorPos = textBefore.length + username.length + 2;
+    textarea.setSelectionRange(newCursorPos, newCursorPos);
+}
+
+function handleMentionKeyDown(e) {
+    if (!mentionsPopup || mentionsPopup.style.display !== 'block') return;
+
+    const items = mentionsPopup.querySelectorAll('.mention-item');
+    if (items.length === 0) return;
+
+    switch (e.key) {
+        case 'ArrowDown':
+            e.preventDefault();
+            activeMentionIndex = (activeMentionIndex + 1) % items.length;
+            updateMentionSelection(items);
+            break;
+        case 'ArrowUp':
+            e.preventDefault();
+            activeMentionIndex = (activeMentionIndex - 1 + items.length) % items.length;
+            updateMentionSelection(items);
+            break;
+        case 'Enter':
+        case 'Tab':
+            if (activeMentionIndex > -1) {
+                e.preventDefault();
+                selectMention(items[activeMentionIndex].dataset.username);
+            }
+            break;
+        case 'Escape':
+            e.preventDefault();
+            hideMentionsPopup();
+            break;
+    }
+}
+
+function updateMentionSelection(items) {
+    items.forEach((item, index) => {
+        item.classList.toggle('selected', index === activeMentionIndex);
+    });
+}
+
+function parseMentions(body) {
+    // FIXED: Updated regex to include dots and hyphens in usernames
+    const mentionRegex = /@([\w.-]+)/g;
+    const mentionedUsernames = new Set();
+    let match;
+    while ((match = mentionRegex.exec(body)) !== null) {
+        mentionedUsernames.add(match[1]);
+    }
+    
+    const taggedUids = [];
+    mentionedUsernames.forEach(username => {
+        const user = allUsers.find(u => u.displayName === username);
+        if (user) {
+            taggedUids.push(user.id);
+        }
+    });
+    
+    const highlightedBody = body.replace(mentionRegex, (match, username) => {
+        const user = allUsers.find(u => u.displayName === username);
+        return user ? `<span class="mention-highlight">${escapeHtml(match)}</span>` : escapeHtml(match);
+    });
+
+    return { taggedUids, highlightedBody };
+}
+
+
+// --- Questions, Answers, Replies ---
+
 async function loadQuestions(filter = 'newest') {
     try {
         questionsList.innerHTML = '<div class="loading">Loading questions...</div>';
@@ -293,17 +500,18 @@ async function loadQuestions(filter = 'newest') {
             questionsList.innerHTML = '<div class="loading">No questions yet. Be the first to ask!</div>';
             return;
         }
-        const questionsHTML = snapshot.docs.map(doc => createQuestionCard(doc.id, doc.data())).join('');
-        questionsList.innerHTML = questionsHTML;
+        questionsList.innerHTML = snapshot.docs.map(doc => createQuestionCard(doc.id, doc.data())).join('');
     } catch (error) {
         console.error('Error loading questions:', error);
-        questionsList.innerHTML = '<div class="loading">Error loading questions. Please try again.</div>';
+        questionsList.innerHTML = '<div class="loading">Error loading questions.</div>';
+        showAlert('Could not load questions.');
     }
 }
 
 function createQuestionCard(id, question) {
     const timeAgo = getTimeAgo(question.timestamp?.toDate());
-    const excerpt = question.body.length > 150 ? question.body.substring(0, 150) + '...' : question.body;
+    const bodyForExcerpt = question.rawBody || question.body;
+    const excerpt = bodyForExcerpt.length > 150 ? bodyForExcerpt.substring(0, 150) + '...' : bodyForExcerpt;
     const authorPhoto = question.authorPhoto || `https://ui-avatars.com/api/?name=${question.authorName}&background=random`;
     
     return `
@@ -330,23 +538,28 @@ async function submitQuestion(event) {
     if (!currentUser) { showLoginModal(); return; }
     const title = document.getElementById('question-title').value.trim();
     const body = document.getElementById('question-body').value.trim();
-    if (!title || !body) { alert('Please fill in both title and body'); return; }
+    if (!title || !body) { 
+        showAlert('Please fill in both title and details for your question.');
+        return; 
+    }
     
+    const { taggedUids, highlightedBody } = parseMentions(body);
+
     try {
-        const questionData = {
-            title: title,
-            body: body,
+        const docRef = await db.collection('questions').add({
+            title, 
+            body: highlightedBody,
+            rawBody: body,
             authorId: currentUser.uid,
-            authorName: currentUser.displayName || currentUser.email,
+            authorName: currentUser.displayName || currentUser.email.split('@')[0],
             authorPhoto: currentUser.photoURL || '',
             timestamp: firebase.firestore.FieldValue.serverTimestamp(),
-            voteCount: 0,
-            answerCount: 0,
-            votes: {}
-        };
-        const docRef = await db.collection('questions').add(questionData);
+            voteCount: 0, 
+            answerCount: 0, 
+            votes: {},
+            taggedUids: taggedUids
+        });
         
-        // Update user stats and reputation (+1 for asking a question)
         await db.collection('users').doc(currentUser.uid).update({
             questionsAsked: firebase.firestore.FieldValue.increment(1),
             reputation: firebase.firestore.FieldValue.increment(1)
@@ -354,12 +567,11 @@ async function submitQuestion(event) {
         
         document.getElementById('ask-question-form').reset();
         showQuestionDetail(docRef.id);
-        
-        // Update displayed reputation
         loadUserReputation();
+        showAlert('Question posted successfully!', 'success');
     } catch (error) {
         console.error('Error posting question:', error);
-        alert('Error posting question. Please try again.');
+        showAlert('Could not post your question. Please try again.');
     }
 }
 
@@ -368,30 +580,34 @@ async function loadQuestionDetail(questionId) {
         const questionDoc = await db.collection('questions').doc(questionId).get();
         if (!questionDoc.exists) {
             document.getElementById('question-detail').innerHTML = '<p>Question not found.</p>';
+            showAlert('This question could not be found.');
             return;
         }
         const question = questionDoc.data();
         const timeAgo = getTimeAgo(question.timestamp?.toDate());
         const isQuestionAuthor = currentUser && question.authorId === currentUser.uid;
-        const questionHTML = `
+        
+        document.getElementById('question-detail').innerHTML = `
             <div class="question-header">
                 <h1>${escapeHtml(question.title)}</h1>
                 <div class="question-meta"><span>Asked ${timeAgo} by ${escapeHtml(question.authorName)}</span></div>
             </div>
-            <div style="display: flex; align-items: flex-start; gap: 20px;">
+            <div class="vote-body-wrapper">
                 <div class="question-votes">
                     <button class="vote-btn" onclick="voteQuestion('${questionId}', 1)" ${!currentUser || isQuestionAuthor ? 'disabled' : ''}>▲</button>
                     <span class="vote-count">${question.voteCount || 0}</span>
                     <button class="vote-btn" onclick="voteQuestion('${questionId}', -1)" ${!currentUser || isQuestionAuthor ? 'disabled' : ''}>▼</button>
                 </div>
-                <div style="flex: 1;"><div class="question-body">${escapeHtml(question.body).replace(/\n/g, '<br>')}</div></div>
+                <div class="content-body">
+                    <div class="question-body">${question.body.replace(/\n/g, '<br>')}</div>
+                </div>
             </div>`;
-        document.getElementById('question-detail').innerHTML = questionHTML;
+            
         loadAnswers(questionId);
         document.getElementById('answer-form-section').style.display = currentUser ? 'block' : 'none';
     } catch (error) {
         console.error('Error loading question detail:', error);
-        document.getElementById('question-detail').innerHTML = '<p>Error loading question.</p>';
+        showAlert('Failed to load question details.');
     }
 }
 
@@ -400,166 +616,292 @@ async function loadAnswers(questionId) {
         const answersSnapshot = await db.collection('answers').where('questionId', '==', questionId).get();
         const answerCount = answersSnapshot.size;
         document.getElementById('answers-count').textContent = `${answerCount} Answer${answerCount !== 1 ? 's' : ''}`;
+        
         const answersListElement = document.getElementById('answers-list');
         if (answerCount === 0) {
-            answersListElement.innerHTML = '<p class="text-muted">No answers yet. Be the first to answer!</p>';
+            answersListElement.innerHTML = '<p>No answers yet. Be the first to answer!</p>';
             return;
         }
+        
         const answersData = answersSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
         answersData.sort((a, b) => (b.voteCount || 0) - (a.voteCount || 0));
-        const answersHTML = answersData.map(answer => {
-            const timeAgo = getTimeAgo(answer.timestamp?.toDate());
-            const authorPhoto = answer.authorPhoto || `https://ui-avatars.com/api/?name=${answer.authorName}&background=random`;
-            const isAuthor = currentUser && answer.authorId === currentUser.uid;
+        
+        answersListElement.innerHTML = await Promise.all(answersData.map(createAnswerCard)).then(cards => cards.join(''));
+        
+        answersData.forEach(answer => loadReplies(answer.id));
+
+    } catch (error) {
+        console.error('Error loading answers:', error);
+        showAlert('Failed to load answers.');
+    }
+}
+
+async function createAnswerCard(answer) {
+    const timeAgo = getTimeAgo(answer.timestamp?.toDate());
+    const authorPhoto = answer.authorPhoto || `https://ui-avatars.com/api/?name=${answer.authorName}&background=random`;
+    const isAuthor = currentUser && answer.authorId === currentUser.uid;
+
+    const deleteButton = isAuthor ? `
+        <button class="delete-btn" onclick="deleteAnswer('${answer.id}')" title="Delete answer">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg>
+        </button>` : '';
+    
+    const replyButton = currentUser ? `
+        <button class="reply-button" onclick="toggleReplyForm('${answer.id}')">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
+            <span>Reply</span>
+        </button>` : '';
+
+    return `
+        <div class="answer-card" id="answer-${answer.id}">
+            <div class="vote-body-wrapper">
+                <div class="question-votes">
+                    <button class="vote-btn" onclick="voteAnswer('${answer.id}', 1)" ${!currentUser || isAuthor ? 'disabled' : ''}>▲</button>
+                    <span class="vote-count">${answer.voteCount || 0}</span>
+                    <button class="vote-btn" onclick="voteAnswer('${answer.id}', -1)" ${!currentUser || isAuthor ? 'disabled' : ''}>▼</button>
+                </div>
+                <div class="content-body">
+                    <div class="answer-body">${escapeHtml(answer.body).replace(/\n/g, '<br>')}</div>
+                    <div class="question-meta">
+                        <div class="question-author">
+                            <img src="${authorPhoto}" alt="Author" class="author-avatar">
+                            <span>${escapeHtml(answer.authorName)}</span>
+                        </div>
+                        <span>${timeAgo}</span>
+                    </div>
+                    <div class="answer-actions">
+                        ${replyButton}
+                        ${deleteButton}
+                    </div>
+                </div>
+            </div>
+            <div class="replies-container" id="replies-for-${answer.id}">
+                <div class="replies-list"></div>
+            </div>
+        </div>`;
+}
+
+async function loadReplies(answerId) {
+    const repliesContainer = document.getElementById(`replies-for-${answerId}`);
+    if (!repliesContainer) return;
+    const repliesList = repliesContainer.querySelector('.replies-list');
+
+    try {
+        const repliesSnapshot = await db.collection('replies').where('answerId', '==', answerId).get();
+        const replies = repliesSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        replies.sort((a, b) => (a.timestamp?.toDate?.() || 0) - (b.timestamp?.toDate?.() || 0));
+
+        repliesList.innerHTML = replies.map(reply => {
+            const timeAgo = getTimeAgo(reply.timestamp?.toDate?.());
+            const authorPhoto = reply.authorPhoto || `https://ui-avatars.com/api/?name=${reply.authorName}&background=random`;
+            const isReplyAuthor = currentUser && reply.authorId === currentUser.uid;
             
-            // Add delete button for answer author
-            const deleteButton = isAuthor ? 
-                `<button class="delete-btn" onclick="deleteAnswer('${answer.id}')" title="Delete answer">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <polyline points="3,6 5,6 21,6"></polyline>
-                        <path d="m19,6v14a2,2 0 0,1-2,2H7a2,2 0 0,1-2-2V6m3,0V4a2,2 0 0,1,2-2h4a2,2 0 0,1,2,2v2"></path>
-                        <line x1="10" y1="11" x2="10" y2="17"></line>
-                        <line x1="14" y1="11" x2="14" y2="17"></line>
-                    </svg>
+            const deleteButton = isReplyAuthor ? `
+                <button class="delete-reply-btn" onclick="deleteReply('${reply.id}', '${answerId}')" title="Delete reply">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg>
                 </button>` : '';
             
             return `
-                <div class="answer-card">
-                    <div style="display: flex; align-items: flex-start; gap: 20px;">
-                        <div class="question-votes">
-                            <button class="vote-btn" onclick="voteAnswer('${answer.id}', 1)" ${!currentUser || isAuthor ? 'disabled' : ''}>▲</button>
-                            <span class="vote-count">${answer.voteCount || 0}</span>
-                            <button class="vote-btn" onclick="voteAnswer('${answer.id}', -1)" ${!currentUser || isAuthor ? 'disabled' : ''}>▼</button>
-                        </div>
-                        <div style="flex: 1;">
-                            <div class="answer-body">${escapeHtml(answer.body).replace(/\n/g, '<br>')}</div>
-                            <div class="question-meta mt-20">
-                                <div class="question-author">
-                                    <img src="${authorPhoto}" alt="Author" class="author-avatar">
-                                    <span>${escapeHtml(answer.authorName)}</span>
-                                </div>
-                                <span>${timeAgo}</span>
-                                ${deleteButton}
-                            </div>
-                        </div>
+                <div class="reply-card" id="reply-${reply.id}">
+                    <div class="reply-meta">
+                        <img src="${authorPhoto}" alt="Author" class="author-avatar" style="width:24px; height:24px;">
+                        <span class="reply-author">${escapeHtml(reply.authorName)}</span>
+                        <span class="reply-time">${timeAgo}</span>
+                        ${deleteButton}
                     </div>
+                    <div class="reply-body">${escapeHtml(reply.body)}</div>
                 </div>`;
         }).join('');
-        answersListElement.innerHTML = answersHTML;
     } catch (error) {
-        console.error('Error loading answers:', error);
+        console.error('Error loading replies:', error);
+        showAlert('Could not load replies for an answer.');
+    }
+}
+
+function toggleReplyForm(answerId) {
+    if (!currentUser) { showLoginModal(); return; }
+    
+    const container = document.getElementById(`replies-for-${answerId}`);
+    let form = container.querySelector('.reply-form');
+
+    if (form) {
+        form.remove();
+    } else {
+        form = document.createElement('form');
+        form.className = 'reply-form';
+        form.onsubmit = (e) => submitReply(e, answerId);
+        form.innerHTML = `
+            <textarea rows="2" placeholder="Add a reply..." required></textarea>
+            <button type="submit" class="btn btn-primary btn-sm">Submit</button>
+        `;
+        container.appendChild(form);
+        form.querySelector('textarea').focus();
+    }
+}
+
+async function deleteReply(replyId, answerId) {
+    if (!currentUser) { showLoginModal(); return; }
+    
+    showConfirmModal('Are you sure you want to delete this reply?', async () => {
+        try {
+            const replyRef = db.collection('replies').doc(replyId);
+            const replyDoc = await replyRef.get();
+            if (!replyDoc.exists || replyDoc.data().authorId !== currentUser.uid) {
+                showAlert("You don't have permission to delete this reply.");
+                return;
+            }
+            
+            await replyRef.delete();
+            await db.collection('users').doc(currentUser.uid).update({
+                reputation: firebase.firestore.FieldValue.increment(-1)
+            });
+            
+            await loadReplies(answerId);
+            loadUserReputation();
+            showAlert('Reply deleted.', 'success');
+        } catch (error) {
+            console.error('Error deleting reply:', error);
+            showAlert('Failed to delete reply.');
+        }
+    });
+}
+
+
+async function submitReply(event, answerId) {
+    event.preventDefault();
+    if (!currentUser) { showLoginModal(); return; }
+
+    const form = event.target;
+    const textarea = form.querySelector('textarea');
+    const body = textarea.value.trim();
+    if (!body) { return; }
+    
+    form.querySelector('button').disabled = true;
+
+    try {
+        await db.collection('replies').add({
+            answerId, questionId: currentQuestionId, body,
+            authorId: currentUser.uid,
+            authorName: currentUser.displayName || currentUser.email.split('@')[0],
+            authorPhoto: currentUser.photoURL || '',
+            timestamp: firebase.firestore.FieldValue.serverTimestamp()
+        });
+        
+        await db.collection('users').doc(currentUser.uid).update({
+            reputation: firebase.firestore.FieldValue.increment(1)
+        });
+        
+        form.remove();
+        await loadReplies(answerId);
+        loadUserReputation();
+    } catch (error) {
+        console.error('Error submitting reply:', error);
+        showAlert('Could not post your reply.');
+        form.querySelector('button').disabled = false;
     }
 }
 
 async function deleteAnswer(answerId) {
-    if (!currentUser) {
-        showLoginModal();
-        return;
-    }
+    if (!currentUser) { showLoginModal(); return; }
     
-    // Confirm deletion
-    if (!confirm('Are you sure you want to delete this answer? This action cannot be undone.')) {
-        return;
-    }
-    
-    try {
-        await db.runTransaction(async (transaction) => {
+    showConfirmModal('Are you sure you want to delete this answer? All its replies will also be removed.', async () => {
+        try {
             const answerRef = db.collection('answers').doc(answerId);
-            const answerDoc = await transaction.get(answerRef);
-            
-            if (!answerDoc.exists) {
-                throw new Error("Answer does not exist!");
+            const answerDoc = await answerRef.get();
+            if (!answerDoc.exists || answerDoc.data().authorId !== currentUser.uid) {
+                 showAlert("You don't have permission to delete this answer.");
+                return;
             }
             
-            const answerData = answerDoc.data();
+            const batch = db.batch();
+            batch.delete(answerRef);
+
+            const questionRef = db.collection('questions').doc(answerDoc.data().questionId);
+            batch.update(questionRef, { answerCount: firebase.firestore.FieldValue.increment(-1) });
             
-            // Check if current user is the author
-            if (answerData.authorId !== currentUser.uid) {
-                throw new Error("You can only delete your own answers.");
-            }
-            
-            // Delete the answer
-            transaction.delete(answerRef);
-            
-            // Update question answer count
-            const questionRef = db.collection('questions').doc(answerData.questionId);
-            transaction.update(questionRef, {
-                answerCount: firebase.firestore.FieldValue.increment(-1)
-            });
-            
-            // Update user stats and reputation (-1 for deleting answer)
             const userRef = db.collection('users').doc(currentUser.uid);
-            transaction.update(userRef, {
+            batch.update(userRef, {
                 answersGiven: firebase.firestore.FieldValue.increment(-1),
-                reputation: firebase.firestore.FieldValue.increment(-1)
+                reputation: firebase.firestore.FieldValue.increment(-5)
             });
-        });
-        
-        // Reload answers to reflect the deletion
-        loadAnswers(currentQuestionId);
-        
-        // Update displayed reputation
-        loadUserReputation();
-        
-        console.log('Answer deleted successfully');
-        
-    } catch (error) {
-        console.error('Error deleting answer:', error);
-        alert('Failed to delete answer: ' + error.message);
-    }
+            
+            const repliesSnapshot = await db.collection('replies').where('answerId', '==', answerId).get();
+            repliesSnapshot.forEach(doc => batch.delete(doc.ref));
+            
+            await batch.commit();
+
+            loadAnswers(currentQuestionId);
+            loadUserReputation();
+            showAlert('Answer deleted successfully.', 'success');
+        } catch (error) {
+            console.error('Error deleting answer:', error);
+            showAlert('Failed to delete the answer.');
+        }
+    });
 }
 
 async function submitAnswer(event) {
     event.preventDefault();
     if (!currentUser || !currentQuestionId) { return; }
     const body = document.getElementById('answer-body').value.trim();
-    if (!body) { alert('Please write an answer'); return; }
+    if (!body) { 
+        showAlert('Please write an answer before submitting.');
+        return; 
+    }
     
     try {
-        const answerData = {
-            questionId: currentQuestionId,
-            body: body,
+        await db.collection('answers').add({
+            questionId: currentQuestionId, body,
             authorId: currentUser.uid,
-            authorName: currentUser.displayName || currentUser.email,
+            authorName: currentUser.displayName || currentUser.email.split('@')[0],
             authorPhoto: currentUser.photoURL || '',
             timestamp: firebase.firestore.FieldValue.serverTimestamp(),
-            voteCount: 0,
-            votes: {}
-        };
+            voteCount: 0, votes: {}
+        });
         
-        await db.collection('answers').add(answerData);
-        
-        // Update question answer count
         await db.collection('questions').doc(currentQuestionId).update({
             answerCount: firebase.firestore.FieldValue.increment(1)
         });
         
-        // Update user stats and reputation (+1 for answering a question)
         await db.collection('users').doc(currentUser.uid).update({
             answersGiven: firebase.firestore.FieldValue.increment(1),
-            reputation: firebase.firestore.FieldValue.increment(1)
+            reputation: firebase.firestore.FieldValue.increment(2)
         });
         
         document.getElementById('answer-form').reset();
         loadAnswers(currentQuestionId);
-        
-        // Update displayed reputation
         loadUserReputation();
+        showAlert('Your answer has been posted!', 'success');
     } catch (error) {
         console.error('Error posting answer:', error);
-        alert('Error posting answer. Please try again.');
+        showAlert('Could not post your answer.');
     }
 }
 
-// Event Listeners
+
+// --- Event Listeners ---
 function setupEventListeners() {
-    // Auth
+    // Auth Modals
     document.getElementById('login-btn').addEventListener('click', showLoginModal);
     document.getElementById('signup-btn').addEventListener('click', showSignupModal);
     document.getElementById('close-modal-btn').addEventListener('click', closeAuthModal);
-    document.getElementById('overlay').addEventListener('click', closeAuthModal);
+    overlay.addEventListener('click', () => {
+        closeAuthModal();
+        closeConfirmModal();
+        hideMentionsPopup();
+    });
     document.getElementById('auth-switch-link').addEventListener('click', toggleAuthMode);
     document.getElementById('google-signin-btn').addEventListener('click', signInWithGoogle);
+
+    // Confirmation Modal Buttons
+    document.getElementById('close-confirm-modal-btn').addEventListener('click', closeConfirmModal);
+    document.getElementById('confirm-modal-cancel-btn').addEventListener('click', closeConfirmModal);
+    document.getElementById('confirm-modal-confirm-btn').addEventListener('click', () => {
+        if (typeof confirmCallback === 'function') {
+            confirmCallback();
+        }
+        closeConfirmModal();
+    });
 
     // Main Navigation
     document.getElementById('home-link').addEventListener('click', showHome);
@@ -584,22 +926,35 @@ function setupEventListeners() {
     document.getElementById('cancel-question-btn').addEventListener('click', showHome);
     document.getElementById('cancel-profile-btn').addEventListener('click', showHome);
 
+    // Mention Feature Listeners
+    mentionsPopup = document.getElementById('mentions-popup');
+    questionBodyTextarea = document.getElementById('question-body');
+    if (questionBodyTextarea) {
+        questionBodyTextarea.addEventListener('input', handleMentionInput);
+        questionBodyTextarea.addEventListener('keydown', handleMentionKeyDown);
+        questionBodyTextarea.addEventListener('blur', () => {
+            setTimeout(hideMentionsPopup, 150);
+        });
+    }
+
     // Filters
     document.getElementById('filters').addEventListener('click', function(e) {
         if (e.target.matches('.filter-btn')) {
-            filterQuestions(e.target.dataset.filter);
+            document.querySelectorAll('.filter-btn').forEach(btn => btn.classList.remove('active'));
+            e.target.classList.add('active');
+            loadQuestions(e.target.dataset.filter);
         }
     });
 }
 
-// User Menu Dropdown Logic
+// --- Utility Functions ---
 function toggleUserMenu(forceClose = false) {
     const dropdown = document.getElementById('user-menu-dropdown');
-    if (forceClose) {
+    if (forceClose || dropdown.style.display === 'block') {
         dropdown.style.display = 'none';
-        return;
+    } else {
+        dropdown.style.display = 'block';
     }
-    dropdown.style.display = dropdown.style.display === 'block' ? 'none' : 'block';
 }
 
 window.addEventListener('click', function(event) {
@@ -609,173 +964,101 @@ window.addEventListener('click', function(event) {
     }
 });
 
-// Utility Functions
 function escapeHtml(text) {
-    const div = document.createElement('div');
-    div.textContent = text;
-    return div.innerHTML;
+    if (text === null || typeof text === 'undefined') return '';
+    const map = {
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&#039;'
+    };
+    return text.toString().replace(/[&<>"']/g, function(m) { return map[m]; });
 }
 
 function getTimeAgo(date) {
-    if (!date) return 'Unknown time';
-    const now = new Date();
-    const diffInSeconds = Math.floor((now - date) / 1000);
+    if (!date || !(date instanceof Date) || isNaN(date.getTime())) return 'just now';
+    
+    const diffInSeconds = Math.floor((new Date() - date) / 1000);
+    const intervals = { 'y': 31536000, 'mo': 2592000, 'd': 86400, 'h': 3600, 'm': 60 };
+    
     if (diffInSeconds < 60) return 'just now';
-    if (diffInSeconds < 3600) return `${Math.floor(diffInSeconds / 60)}m ago`;
-    if (diffInSeconds < 86400) return `${Math.floor(diffInSeconds / 3600)}h ago`;
-    if (diffInSeconds < 2592000) return `${Math.floor(diffInSeconds / 86400)}d ago`;
-    return date.toLocaleDateString();
+    
+    for (const [unit, seconds] of Object.entries(intervals)) {
+        const interval = diffInSeconds / seconds;
+        if (interval > 1) return `${Math.floor(interval)}${unit} ago`;
+    }
+    return 'just now';
 }
 
-// Voting Functions - SIMPLIFIED AND FIXED
-async function voteQuestion(questionId, voteValue) {
-    if (!currentUser) {
-        showLoginModal();
-        return;
+function getFriendlyAuthError(error) {
+    switch (error.code) {
+        case 'auth/invalid-email':
+            return 'Please enter a valid email address.';
+        case 'auth/user-not-found':
+            return 'No account found with this email. Please sign up.';
+        case 'auth/wrong-password':
+            return 'Incorrect password. Please try again.';
+        case 'auth/email-already-in-use':
+            return 'This email is already registered. Please log in.';
+        case 'auth/weak-password':
+            return 'Your password should be at least 6 characters long.';
+        default:
+            return 'An authentication error occurred. Please try again.';
+    }
+}
+
+
+// --- Voting Functions ---
+async function vote(collection, docId, voteValue) {
+    if (!currentUser) { 
+        showAlert('Please log in to vote.');
+        showLoginModal(); 
+        return; 
     }
     
+    const docRef = db.collection(collection).doc(docId);
     try {
         await db.runTransaction(async (transaction) => {
-            const questionRef = db.collection('questions').doc(questionId);
-            const questionDoc = await transaction.get(questionRef);
+            const doc = await transaction.get(docRef);
+            if (!doc.exists) throw new Error("Document does not exist!");
             
-            if (!questionDoc.exists) {
-                throw new Error("Question does not exist!");
+            const data = doc.data();
+            if (data.authorId === currentUser.uid){
+                showAlert("You cannot vote on your own content.");
+                throw new Error("You cannot vote on your own content.");
             }
             
-            const questionData = questionDoc.data();
+            const currentVote = data.votes[currentUser.uid] || 0;
+            const newVote = voteValue === currentVote ? 0 : voteValue;
+            const voteChange = newVote - currentVote;
             
-            // Prevent voting on own questions
-            if (questionData.authorId === currentUser.uid) {
-                throw new Error("You cannot vote on your own question.");
-            }
-            
-            const currentVote = questionData.votes[currentUser.uid] || 0;
-            let newVote = voteValue === currentVote ? 0 : voteValue; // Toggle vote
-            let voteChange = newVote - currentVote;
-            
-            // Update question
-            transaction.update(questionRef, {
-                voteCount: (questionData.voteCount || 0) + voteChange,
+            transaction.update(docRef, {
+                voteCount: firebase.firestore.FieldValue.increment(voteChange),
                 [`votes.${currentUser.uid}`]: newVote
             });
             
-            // Update author's reputation
-            if (questionData.authorId && voteChange !== 0) {
-                const authorRef = db.collection('users').doc(questionData.authorId);
-                let repChange = 0;
-                
-                if (voteChange === 1) { // New upvote or changing from downvote to upvote
-                    repChange = currentVote === -1 ? 8 : 5; // +8 if changing from downvote, +5 if new upvote
-                } else if (voteChange === -1) { // New downvote or changing from upvote to downvote
-                    repChange = currentVote === 1 ? -8 : -3; // -8 if changing from upvote, -3 if new downvote
-                }
-                
-                if (repChange !== 0) {
-                    transaction.update(authorRef, {
-                        reputation: firebase.firestore.FieldValue.increment(repChange)
-                    });
-                }
+            if (data.authorId && voteChange !== 0) {
+                const authorRef = db.collection('users').doc(data.authorId);
+                const repChanges = { questions: 5, answers: 10 };
+                let repChange = (newVote === 1 ? repChanges[collection] : -2);
+                 if (currentVote !== 0) { // If changing vote, reverse old rep
+                    repChange += (currentVote === 1 ? -repChanges[collection] : 2);
+                 }
+                transaction.update(authorRef, { reputation: firebase.firestore.FieldValue.increment(repChange) });
             }
         });
         
-        // Reload the question to show updated vote count
-        loadQuestionDetail(questionId);
-        
-        // Update displayed reputation if current user's reputation changed
-        if (currentUser) {
-            loadUserReputation();
-        }
-        
+        if (collection === 'questions') loadQuestionDetail(docId);
+        if (collection === 'answers') loadAnswers(currentQuestionId);
+        loadUserReputation();
     } catch (error) {
         console.error("Vote transaction failed: ", error);
-        alert(error.message);
-    }
-}
-
-
-async function voteAnswer(answerId, voteValue) {
-    if (!currentUser) {
-        showLoginModal();
-        return;
-    }
-    
-    try {
-        await db.runTransaction(async (transaction) => {
-            const answerRef = db.collection('answers').doc(answerId);
-            const answerDoc = await transaction.get(answerRef);
-            
-            if (!answerDoc.exists) {
-                throw new Error("Answer does not exist!");
-            }
-            
-            const answerData = answerDoc.data();
-            
-            // Prevent voting on own answers
-            if (answerData.authorId === currentUser.uid) {
-                throw new Error("You cannot vote on your own answer.");
-            }
-            
-            const currentVote = answerData.votes[currentUser.uid] || 0;
-            let newVote = voteValue === currentVote ? 0 : voteValue; // Toggle vote
-            let voteChange = newVote - currentVote;
-            
-            // Update answer
-            transaction.update(answerRef, {
-                voteCount: (answerData.voteCount || 0) + voteChange,
-                [`votes.${currentUser.uid}`]: newVote
-            });
-            
-            // Update author's reputation - FIXED LOGIC
-            if (answerData.authorId && voteChange !== 0) {
-                const authorRef = db.collection('users').doc(answerData.authorId);
-                let repChange = 0;
-                
-                // Fixed reputation calculation logic
-                if (voteChange === 1) { 
-                    // Adding an upvote or changing from downvote to upvote
-                    repChange = currentVote === -1 ? 8 : 5; // +8 if was downvote, +5 if new upvote
-                } else if (voteChange === -1) { 
-                    // Adding a downvote or changing from upvote to downvote
-                    repChange = currentVote === 1 ? -8 : -3; // -8 if was upvote, -3 if new downvote
-                } else if (voteChange === -1 && currentVote === 1) { 
-                    // This condition is redundant and will never be reached
-                    // because if voteChange is -1 and currentVote is 1, it's covered above
-                    repChange = -5;
-                } else if (voteChange === 1 && currentVote === -1) { 
-                    // This condition is also redundant
-                    repChange = 3;
-                }
-                
-                console.log(`Reputation change for answer vote: ${repChange} (voteChange: ${voteChange}, currentVote: ${currentVote})`);
-                
-                if (repChange !== 0) {
-                    transaction.update(authorRef, {
-                        reputation: firebase.firestore.FieldValue.increment(repChange)
-                    });
-                }
-            }
-        });
-        
-        // Reload the answers to show updated vote count
-        loadAnswers(currentQuestionId);
-        
-        // Update displayed reputation if current user's reputation changed
-        if (currentUser) {
-            loadUserReputation();
+        if(error.message !== "You cannot vote on your own content."){
+             showAlert('Your vote could not be processed.');
         }
-        
-    } catch (error) {
-        console.error("Vote transaction failed: ", error);
-        alert(error.message);
     }
 }
 
-function filterQuestions(filter) {
-    document.querySelectorAll('.filter-btn').forEach(btn => btn.classList.remove('active'));
-    const activeBtn = document.querySelector(`.filter-btn[data-filter="${filter}"]`);
-    if (activeBtn) {
-        activeBtn.classList.add('active');
-    }
-    loadQuestions(filter);
-}
+function voteQuestion(questionId, value) { vote('questions', questionId, value); }
+function voteAnswer(answerId, value) { vote('answers', answerId, value); }

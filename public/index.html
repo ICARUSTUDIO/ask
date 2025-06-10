@@ -32,7 +32,7 @@
                         <button id="signup-btn" class="btn btn-primary">Sign Up</button>
                     </div>
                     
-                    <!-- UPDATED: User Menu with Dropdown -->
+                    <!-- User Menu with Dropdown -->
                     <div id="user-menu" class="user-menu" style="display: none;">
                         <div id="user-info-wrapper" class="user-info-wrapper">
                             <div class="user-info">
@@ -136,7 +136,7 @@
             </div>
         </div>
         
-        <!-- NEW: Profile Page -->
+        <!-- Profile Page -->
         <div id="profile-page" class="page" style="display: none;">
             <div class="container">
                 <div class="page-header">
@@ -215,6 +215,24 @@
             </div>
         </div>
     </div>
+    
+    <!-- ADDED: Confirmation Modal for Delete Actions -->
+    <div id="confirm-modal" class="modal" style="display: none;">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 id="confirm-modal-title">Confirm Action</h3>
+                <button class="close-btn" id="close-confirm-modal-btn">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p id="confirm-modal-text">Are you sure you want to delete this? This action cannot be undone.</p>
+                <div class="form-actions" style="margin-top: 20px;">
+                    <button id="confirm-modal-cancel-btn" class="btn btn-outline">Cancel</button>
+                    <button id="confirm-modal-confirm-btn" class="btn btn-primary">Delete</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
 
     <!-- Overlay -->
     <div id="overlay" class="overlay" style="display: none;"></div>

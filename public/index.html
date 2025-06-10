@@ -2,6 +2,16 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
+    <!-- UPDATED: More permissive CSP for images -->
+    <meta http-equiv="Content-Security-Policy" content="
+    default-src 'self';
+    script-src 'self' 'unsafe-inline' https://www.gstatic.com https://*.firebaseio.com https://apis.google.com https://cdnjs.cloudflare.com https://*.googleapis.com https://*.firebaseapp.com https://*.firebase.com;
+    style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;
+    img-src 'self' data: https: http: blob:;
+    connect-src 'self' https://*.googleapis.com https://*.firebaseio.com wss://*.firebaseio.com https://*.firebaseapp.com https://*.firebase.com wss://*.firebaseapp.com;
+    font-src 'self' https://fonts.gstatic.com;
+    frame-src 'self' https://ask-a-question-today.firebaseapp.com;
+">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>DevQ&A - Collaborative Q&A Platform</title>
     <link rel="stylesheet" href="style.css">
@@ -12,6 +22,9 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/firebase/9.23.0/firebase-firestore-compat.min.js"></script>
 </head>
 <body>
+    <!-- ADDED: Custom Alert -->
+    <div id="alert-container" class="alert-container"></div>
+
     <!-- Header -->
     <header class="header">
         <div class="container">
@@ -32,7 +45,7 @@
                         <button id="signup-btn" class="btn btn-primary">Sign Up</button>
                     </div>
                     
-                    <!-- UPDATED: User Menu with Dropdown -->
+                    <!-- User Menu with Dropdown -->
                     <div id="user-menu" class="user-menu" style="display: none;">
                         <div id="user-info-wrapper" class="user-info-wrapper">
                             <div class="user-info">
@@ -96,7 +109,7 @@
                         <label for="question-body">Question Details</label>
                         <textarea id="question-body" rows="10" required 
                                   placeholder="Provide all relevant details. Include any code, error messages, and what you've tried so far."></textarea>
-                        <small>Include all the information someone would need to answer your question</small>
+                        <small>Include all the information someone would need to answer your question. You can @mention users to notify them.</small>
                     </div>
                     
                     <div class="form-actions">
@@ -136,7 +149,7 @@
             </div>
         </div>
         
-        <!-- NEW: Profile Page -->
+        <!-- Profile Page -->
         <div id="profile-page" class="page" style="display: none;">
             <div class="container">
                 <div class="page-header">
@@ -166,7 +179,7 @@
                              <img id="profile-avatar-preview" src="" alt="Avatar Preview" class="profile-avatar-preview">
                              <input type="text" id="profile-photo-url" placeholder="Enter image URL for your profile picture">
                         </div>
-                         <small>Provide a direct URL to an image (e.g., from Imgur, Gravatar).</small>
+                         <small>Provide a direct URL to an image (e.g., from Imgur, Gravatar). Make sure the URL uses HTTPS.</small>
                     </div>
 
                     <div class="form-actions">
@@ -189,8 +202,13 @@
             <div class="modal-body">
                 <!-- Google Sign In -->
                 <button id="google-signin-btn" class="btn btn-google">
-                    <img src="data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTgiIGhlaWdodD0iMTgiIHZpZXdCb3g9IjAgMCAxOCAxOCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHBhdGggZD0iTTE3LjY0IDkuMjA0ODJDMTC3NjQgOC41NjUzMiAxNy41MjQ5IDcuOTUxMDcgMTcuMzMxOSA3LjMxNTE0SDE5LjAxVjguMzY5NjVIMTYuMTMxMkMxNS44MDcgOC45MzUzOCAxNS40MTk0IDkuNDI4NjQgMTQuOTkyMSA5LjgyNzI2TDE0Ljk5MjEgMTAuMzUxOEgxNi4zMTA4QzE2Ljg5NTcgOS4wNzUwMSAxNy4zMzE5IDcuNjkyOTIgMTcuMzMxOSA2LjEzNjM2VjUuODY5NDJIMTC8MTcuNjQgOS4yMDQ4MloiIGZpbGw9IiM0Mjg1RjQiLz4KPHBhdGggZD0iTTkgMTZDMTEuNjMgMTYgMTMuODEgMTQuODkgMTUuMjQgMTIuOTJMTMuMjQgMTEuNkMxMi41NCAxMi4yMyAxMS41OCAxMi42NiAxMCAxMi42NkM4LjQyIDEyLjY2IDcuNTUgMTEuNTkgNy4yNCAxMC4yN0g1LjIxVjEwLjgxQzYuNDcgMTMuMzEgOC40OSAxNiAxMCAxNloiIGZpbGw9IiMzNEE4NTMiLz4KPHBhdGggZD0iTTcuMjQgMTAuMjdDNi45MyA5LjYxIDYuOTMgOC44NCA3LjI0IDguMThWNy42NEg1LjIxQzQuNTQgOC45NyA0LjU0IDEwLjQ4IDUuMjEgMTEuODFMNy4yNCAxMC4yN1oiIGZpbGw9IiNGQkJDMDUiLz4KPHBhdGggZD0iTTEwIDYuNjdDMTEuNjYgNi42NyAxMy4xIDcuMjYgMTQuMTkgOC4zTDE1Ljk5IDYuNUMxNC4zNCA1LjAzIDEyLjE5IDQuMTcgMTAgNC4xN0M4LjQ5IDQuMTcgNi40NyA2Ljg2IDUuMjEgOS4zNkw3LjI0IDEwLjkwNUM3LjU1IDkuNjIgOC40MiA4LjU1IDEwIDguNTVaIiBmaWxsPSIjRUE0MzM1Ii8+Cjwvc3ZnPgo=" alt="Google">
-                    Continue with Google
+                    <svg width="18" height="18" viewBox="0 0 18 18" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M17.64 9.20455C17.64 8.56636 17.5227 7.95273 17.3291 7.36364H9.18V9.28636H13.9159C13.7591 9.92455 13.3364 10.4809 12.7227 10.875L12.7118 10.965L15.045 12.6718L15.15 12.6827C16.6591 11.3345 17.64 10.3636 17.64 9.20455Z" fill="#4285F4"/>
+                        <path d="M9.18 18C11.43 18 13.3364 17.2173 14.6727 16.0341L12.4473 14.4114C11.6918 14.9318 10.56 15.2273 9.18 15.2273C7.03636 15.2273 5.22273 13.8432 4.5 12.0159L4.40455 12.025L2.01 13.7218L1.965 13.7841C3.25364 16.2 5.94545 18 9.18 18Z" fill="#34A853"/>
+                        <path d="M4.5 10.7727C4.34318 10.2886 4.25455 9.77045 4.25455 9.24545C4.25455 8.72045 4.34318 8.20227 4.5 7.71818V7.625L2.09273 5.90682L2.01 5.92727C1.47273 6.94318 1.18182 8.06818 1.18182 9.24545C1.18182 10.4227 1.47273 11.5477 2.01 12.5636L4.5 10.7727Z" fill="#FBBC05"/>
+                        <path d="M9.18 3.27273C10.6364 3.27273 11.8386 3.77955 12.7977 4.69318L14.75 2.73864C13.3273 1.41591 11.43 0.5 9.18 0.5C5.94545 0.5 3.25364 2.3 1.965 4.71591L4.5 6.5C5.22273 4.67273 7.03636 3.27273 9.18 3.27273Z" fill="#EA4335"/>
+                    </svg>
+                    <span>Continue with Google</span>
                 </button>
                 
                 <div class="divider">
@@ -215,9 +233,29 @@
             </div>
         </div>
     </div>
+    
+    <!-- ADDED: Confirmation Modal for Delete Actions -->
+    <div id="confirm-modal" class="modal" style="display: none;">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 id="confirm-modal-title">Confirm Action</h3>
+                <button class="close-btn" id="close-confirm-modal-btn">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p id="confirm-modal-text">Are you sure you want to delete this? This action cannot be undone.</p>
+                <div class="form-actions" style="margin-top: 20px;">
+                    <button id="confirm-modal-cancel-btn" class="btn btn-outline">Cancel</button>
+                    <button id="confirm-modal-confirm-btn" class="btn btn-primary">Delete</button>
+                </div>
+            </div>
+        </div>
+    </div>
 
     <!-- Overlay -->
     <div id="overlay" class="overlay" style="display: none;"></div>
+    
+    <!-- ADDED: Mention Popup -->
+    <div id="mentions-popup" class="mentions-popup"></div>
 
     <script src="firebase-config.js"></script>
     <script src="app.js"></script>

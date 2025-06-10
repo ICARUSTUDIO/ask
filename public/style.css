@@ -81,7 +81,7 @@ body {
     align-items: center;
 }
 
-/* UPDATED: User Menu Styles */
+/* User Menu Styles */
 .user-menu {
     position: relative; /* For dropdown positioning */
 }
@@ -160,7 +160,7 @@ body {
 .btn {
     padding: 8px 16px;
     border-radius: 6px;
-    border: none;
+    border: 1px solid transparent;
     font-weight: 500;
     cursor: pointer;
     transition: all 0.2s;
@@ -168,6 +168,10 @@ body {
     display: inline-block;
     font-size: 14px;
     white-space: nowrap;
+}
+.btn-sm {
+    padding: 4px 8px;
+    font-size: 12px;
 }
 
 .btn-primary {
@@ -182,12 +186,11 @@ body {
 .btn-outline {
     background: transparent;
     color: #2563eb;
-    border: 1px solid #2563eb;
+    border-color: #2563eb;
 }
 
 .btn-outline:hover {
-    background: #2563eb;
-    color: white;
+    background: #eef2ff;
 }
 
 .btn-google {
@@ -393,7 +396,7 @@ body {
     margin-top: 30px;
 }
 
-/* NEW: Profile Page specific styles */
+/* Profile Page specific styles */
 .profile-picture-section {
     display: flex;
     align-items: center;
@@ -505,16 +508,150 @@ input:disabled {
 }
 
 .answer-card {
-    background: white;
+    background: #fff;
     border: 1px solid #e0e0e0;
     border-radius: 8px;
     padding: 20px;
     margin-bottom: 20px;
+    position: relative; 
 }
 
 .answer-body {
     margin-bottom: 15px;
     line-height: 1.6;
+}
+
+/* Reply Feature Styles */
+.replies-container {
+    margin-top: 20px;
+    padding-left: 50px; /* Indent replies */
+    border-left: 2px solid #e9ecef;
+}
+
+.replies-list {
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+    margin-bottom: 15px;
+}
+
+.reply-card {
+    background: #f8f9fa;
+    padding: 12px;
+    border-radius: 6px;
+    font-size: 14px;
+    position: relative;
+    transition: opacity 0.3s ease, transform 0.3s ease;
+}
+
+.reply-card.deleting {
+    opacity: 0;
+    transform: translateX(-20px);
+}
+
+
+.reply-meta {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 8px;
+    width: 100%; /* ADDED: Ensure the container takes full width */
+}
+
+.reply-author {
+    font-weight: 600;
+    color: #2563eb;
+}
+
+.reply-time {
+    font-size: 12px;
+    color: #666;
+}
+
+.reply-body {
+    color: #333;
+}
+
+.reply-form {
+    display: flex;
+    gap: 10px;
+    align-items: flex-start;
+    margin-top: 10px;
+}
+
+.reply-form textarea {
+    width: 100%;
+    padding: 8px;
+    border: 1px solid #d1d5db;
+    border-radius: 6px;
+    font-size: 13px;
+    font-family: inherit;
+    resize: vertical;
+}
+
+.reply-button {
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: #666;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 14px;
+    padding: 5px;
+    border-radius: 4px;
+    transition: all 0.2s;
+}
+
+.reply-button:hover {
+    background: #f3f4f6;
+    color: #2563eb;
+}
+
+.answer-actions {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+/* Delete Buttons */
+.delete-btn {
+    background: none;
+    border: none;
+    color: #666;
+    cursor: pointer;
+    padding: 5px;
+    border-radius: 4px;
+    transition: all 0.2s ease;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.delete-btn:hover {
+    background-color: #fce8eA;
+    color: #a51220;
+}
+
+
+.delete-reply-btn {
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 4px;
+    margin-left: 8px;
+    border-radius: 50%;
+    color: #666;
+    transition: all 0.2s ease;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    margin-left:auto; /* Pushes button to the far right */
+}
+
+.delete-reply-btn:hover {
+    background-color: #fce8eA;
+    color: #a51220;
 }
 
 .answer-form-section {
@@ -581,6 +718,20 @@ input:disabled {
     padding: 30px;
 }
 
+/* ADDED: Confirmation Modal Styles */
+#confirm-modal .modal-content {
+    max-width: 450px;
+}
+#confirm-modal-confirm-btn {
+    background-color: #dc3545; /* Red for destructive actions */
+    border-color: #dc3545;
+}
+#confirm-modal-confirm-btn:hover {
+    background-color: #c82333;
+    border-color: #bd2130;
+}
+
+
 .divider {
     text-align: center;
     margin: 20px 0;
@@ -639,7 +790,7 @@ input:disabled {
     font-style: italic;
 }
 
-/* OPTIMIZED Mobile Responsive Design */
+/* Mobile Responsive Design */
 @media (max-width: 768px) {
     .container {
         padding: 0 15px;
@@ -654,7 +805,6 @@ input:disabled {
         align-items: flex-start;
     }
 
-    /* Optimized Mobile Header */
     .header .container {
         padding: 10px 15px;
         min-height: 56px;
@@ -762,7 +912,6 @@ input:disabled {
         font-size: 20px;
     }
     
-    /* Mobile voting layout */
     .vote-body-wrapper {
         flex-direction: column;
     }
@@ -796,24 +945,8 @@ input:disabled {
         margin: 20px;
         width: calc(100% - 40px);
     }
-}
-
-/* Delete button styles */
-.delete-btn {
-    background: none;
-    border: none;
-    color: #dc3545;
-    cursor: pointer;
-    padding: 4px;
-    margin-left: 10px;
-    border-radius: 4px;
-    transition: all 0.2s ease;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-}
-
-.delete-btn:hover {
-    background-color: #dc3545;
-    color: white;
+    
+    .replies-container {
+        padding-left: 20px;
+    }
 }

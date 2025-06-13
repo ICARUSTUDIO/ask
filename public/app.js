@@ -3,6 +3,7 @@ let currentUser = null;
 let currentQuestionId = null;
 let isSignupMode = false;
 let confirmCallback = null; // For the custom confirm modal
+let notificationsListener = null; // To store the unsubscribe function for notifications
 
 // DOM Elements
 const authButtons = document.getElementById('auth-buttons');
@@ -12,6 +13,10 @@ const confirmModal = document.getElementById('confirm-modal');
 const overlay = document.getElementById('overlay');
 const questionsList = document.getElementById('questions-list');
 const alertContainer = document.getElementById('alert-container');
+const notificationsContainer = document.getElementById('notifications-container');
+const notificationsBell = document.getElementById('notifications-bell');
+const notificationsCount = document.getElementById('notifications-count');
+const notificationsDropdown = document.getElementById('notifications-dropdown');
 
 
 // Page Elements
@@ -30,9 +35,11 @@ document.addEventListener('DOMContentLoaded', function() {
             currentUser = user;
             showUserMenu();
             createUserDocument(user);
+            listenForNotifications(); // Start listening for notifications
         } else {
             currentUser = null;
             showAuthButtons();
+            listenForNotifications(); // Stop listening and hide UI
         }
         // Reload content that depends on auth state
         if(currentQuestionId) {
@@ -133,6 +140,7 @@ function toggleAuthMode() {
 function showUserMenu() {
     authButtons.style.display = 'none';
     userMenu.style.display = 'block';
+    notificationsContainer.style.display = 'block'; // Show notifications bell
     
     document.getElementById('user-name').textContent = currentUser.displayName || currentUser.email.split('@')[0];
     document.getElementById('user-avatar').src = currentUser.photoURL || `https://ui-avatars.com/api/?name=${currentUser.displayName || currentUser.email}&background=random`;
@@ -143,6 +151,7 @@ function showUserMenu() {
 function showAuthButtons() {
     authButtons.style.display = 'flex';
     userMenu.style.display = 'none';
+    notificationsContainer.style.display = 'none'; // Hide notifications bell
 }
 
 async function signInWithGoogle() {
@@ -354,15 +363,14 @@ function handleMentionInput(e) {
     const textarea = e.target;
     const cursorPos = textarea.selectionStart;
     const textBeforeCursor = textarea.value.substring(0, cursorPos);
-    // FIXED: Updated regex to include dots and hyphens in usernames
-    const mentionMatch = textBeforeCursor.match(/@([\w.-]*)$/);
+    const mentionMatch = textBeforeCursor.match(/@([\w\s.-]*)$/);
 
     if (mentionMatch) {
         mentionStartIndex = mentionMatch.index;
         currentMentionTerm = mentionMatch[1].toLowerCase();
         
         const filteredUsers = allUsers.filter(user =>
-            user.displayName.toLowerCase().includes(currentMentionTerm)
+            user.displayName && user.displayName.toLowerCase().includes(currentMentionTerm)
         );
 
         if (filteredUsers.length > 0) {
@@ -459,28 +467,33 @@ function updateMentionSelection(items) {
 }
 
 function parseMentions(body) {
-    // FIXED: Updated regex to include dots and hyphens in usernames
-    const mentionRegex = /@([\w.-]+)/g;
-    const mentionedUsernames = new Set();
-    let match;
-    while ((match = mentionRegex.exec(body)) !== null) {
-        mentionedUsernames.add(match[1]);
+    const taggedUids = new Set();
+    let highlightedBody = escapeHtml(body); 
+
+    if (allUsers.length === 0) {
+        return { taggedUids: [], highlightedBody: highlightedBody };
     }
-    
-    const taggedUids = [];
-    mentionedUsernames.forEach(username => {
-        const user = allUsers.find(u => u.displayName === username);
-        if (user) {
-            taggedUids.push(user.id);
+
+    const sortedUsers = [...allUsers].sort((a, b) => (b.displayName?.length || 0) - (a.displayName?.length || 0));
+
+    sortedUsers.forEach(user => {
+        if (!user.displayName) return; 
+
+        const mentionRegex = new RegExp(`@${escapeRegex(user.displayName)}`, 'g');
+        
+        if (body.match(mentionRegex)) {
+            if (user.id !== currentUser.uid) {
+                taggedUids.add(user.id);
+            }
+            highlightedBody = highlightedBody.replace(mentionRegex, `<span class="mention-highlight">@${escapeHtml(user.displayName)}</span>`);
         }
     });
-    
-    const highlightedBody = body.replace(mentionRegex, (match, username) => {
-        const user = allUsers.find(u => u.displayName === username);
-        return user ? `<span class="mention-highlight">${escapeHtml(match)}</span>` : escapeHtml(match);
-    });
 
-    return { taggedUids, highlightedBody };
+    return { taggedUids: Array.from(taggedUids), highlightedBody };
+}
+
+function escapeRegex(string) {
+    return string.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
 }
 
 
@@ -543,6 +556,10 @@ async function submitQuestion(event) {
         return; 
     }
     
+    if (allUsers.length === 0) {
+        await fetchAllUsers();
+    }
+
     const { taggedUids, highlightedBody } = parseMentions(body);
 
     try {
@@ -559,6 +576,24 @@ async function submitQuestion(event) {
             votes: {},
             taggedUids: taggedUids
         });
+
+        // Create notifications for tagged users
+        if (taggedUids.length > 0) {
+            const batch = db.batch();
+            taggedUids.forEach(uid => {
+                const notificationRef = db.collection('notifications').doc();
+                batch.set(notificationRef, {
+                    recipientId: uid,
+                    senderName: currentUser.displayName || currentUser.email.split('@')[0],
+                    questionId: docRef.id,
+                    questionTitle: title,
+                    type: 'mention',
+                    isRead: false,
+                    timestamp: firebase.firestore.FieldValue.serverTimestamp()
+                });
+            });
+            await batch.commit();
+        }
         
         await db.collection('users').doc(currentUser.uid).update({
             questionsAsked: firebase.firestore.FieldValue.increment(1),
@@ -570,7 +605,7 @@ async function submitQuestion(event) {
         loadUserReputation();
         showAlert('Question posted successfully!', 'success');
     } catch (error) {
-        console.error('Error posting question:', error);
+        console.error('ERROR during question submission or notification creation:', error);
         showAlert('Could not post your question. Please try again.');
     }
 }
@@ -587,10 +622,24 @@ async function loadQuestionDetail(questionId) {
         const timeAgo = getTimeAgo(question.timestamp?.toDate());
         const isQuestionAuthor = currentUser && question.authorId === currentUser.uid;
         
+        const canDelete = isQuestionAuthor && (question.answerCount || 0) === 0;
+        const deleteButtonHtml = `
+            <button 
+                class="btn btn-danger" 
+                onclick="deleteQuestion('${questionId}')"
+                ${!canDelete ? 'disabled title="Can only delete questions with no answers."' : 'title="Delete this question"'}
+            >
+                Delete Question
+            </button>
+        `;
+        
         document.getElementById('question-detail').innerHTML = `
             <div class="question-header">
                 <h1>${escapeHtml(question.title)}</h1>
-                <div class="question-meta"><span>Asked ${timeAgo} by ${escapeHtml(question.authorName)}</span></div>
+                <div class="question-meta-actions">
+                     <div class="question-meta"><span>Asked ${timeAgo} by ${escapeHtml(question.authorName)}</span></div>
+                     ${isQuestionAuthor ? deleteButtonHtml : ''}
+                </div>
             </div>
             <div class="vote-body-wrapper">
                 <div class="question-votes">
@@ -610,6 +659,61 @@ async function loadQuestionDetail(questionId) {
         showAlert('Failed to load question details.');
     }
 }
+
+async function deleteQuestion(questionId) {
+    if (!currentUser) {
+        showAlert("You must be logged in to delete a question.");
+        showLoginModal();
+        return;
+    }
+
+    showConfirmModal("Are you sure you want to delete this question? This action cannot be undone.", async () => {
+        const questionRef = db.collection('questions').doc(questionId);
+        const userRef = db.collection('users').doc(currentUser.uid);
+
+        try {
+            await db.runTransaction(async (transaction) => {
+                const questionDoc = await transaction.get(questionRef);
+
+                if (!questionDoc.exists) {
+                    throw new Error("Question not found.");
+                }
+
+                const question = questionDoc.data();
+
+                if (question.authorId !== currentUser.uid) {
+                    throw new Error("You don't have permission to delete this question.");
+                }
+
+                if ((question.answerCount || 0) > 0) {
+                    throw new Error("Cannot delete a question that has answers.");
+                }
+
+                transaction.delete(questionRef);
+                transaction.update(userRef, {
+                    questionsAsked: firebase.firestore.FieldValue.increment(-1),
+                    reputation: firebase.firestore.FieldValue.increment(-1)
+                });
+            });
+
+            showAlert("Question deleted successfully.", "success");
+            showHome();
+            loadUserReputation();
+
+        } catch (error) {
+            console.error("Error deleting question:", error);
+            if (error.message.includes("permission")) {
+                 showAlert("You do not have permission to perform this action.");
+            } else if (error.message.includes("answers")) {
+                 showAlert(error.message);
+                 loadQuestionDetail(questionId);
+            } else {
+                 showAlert("Failed to delete the question. Please try again.");
+            }
+        }
+    });
+}
+
 
 async function loadAnswers(questionId) {
     try {
@@ -840,6 +944,8 @@ async function deleteAnswer(answerId) {
     });
 }
 
+
+
 async function submitAnswer(event) {
     event.preventDefault();
     if (!currentUser || !currentQuestionId) { return; }
@@ -889,6 +995,7 @@ function setupEventListeners() {
         closeAuthModal();
         closeConfirmModal();
         hideMentionsPopup();
+        notificationsDropdown.style.display = 'none'; // Close notifications on overlay click
     });
     document.getElementById('auth-switch-link').addEventListener('click', toggleAuthMode);
     document.getElementById('google-signin-btn').addEventListener('click', signInWithGoogle);
@@ -913,6 +1020,9 @@ function setupEventListeners() {
     document.getElementById('profile-link').addEventListener('click', showProfilePage);
     document.getElementById('logout-link').addEventListener('click', logout);
     
+    // Notifications Listener
+    notificationsBell.addEventListener('click', handleNotificationBellClick);
+
     // Forms
     document.getElementById('email-auth-form').addEventListener('submit', function(e) {
         e.preventDefault();
@@ -957,12 +1067,16 @@ function toggleUserMenu(forceClose = false) {
     }
 }
 
+// Close dropdowns if clicked outside
 window.addEventListener('click', function(event) {
-    const userMenuNode = document.getElementById('user-menu');
-    if (userMenuNode && !userMenuNode.contains(event.target)) {
+    if (userMenu && !userMenu.contains(event.target)) {
         toggleUserMenu(true);
     }
+    if (notificationsContainer && !notificationsContainer.contains(event.target)) {
+        notificationsDropdown.style.display = 'none';
+    }
 });
+
 
 function escapeHtml(text) {
     if (text === null || typeof text === 'undefined') return '';
@@ -1062,3 +1176,153 @@ async function vote(collection, docId, voteValue) {
 
 function voteQuestion(questionId, value) { vote('questions', questionId, value); }
 function voteAnswer(answerId, value) { vote('answers', answerId, value); }
+
+// --- In-App Notification Functions ---
+
+function listenForNotifications() {
+    if (notificationsListener) {
+        notificationsListener(); // Unsubscribe from the old listener
+    }
+
+    if (!currentUser) {
+        updateNotificationCount(0);
+        return;
+    }
+
+    // This query requires a composite index on 'recipientId' (ascending) and 'timestamp' (descending).
+    // Firestore will provide a link in the browser's console to create this index if it's missing.
+    const notificationsQuery = db.collection('notifications')
+        .where('recipientId', '==', currentUser.uid)
+        .orderBy('timestamp', 'desc')
+        .limit(30);
+
+    notificationsListener = notificationsQuery.onSnapshot(snapshot => {
+        // We count unread notifications on the client side after fetching the latest ones.
+        const unreadCount = snapshot.docs.filter(doc => doc.data().isRead === false).length;
+        updateNotificationCount(unreadCount);
+    }, error => {
+        console.error("Error listening for notifications:", error);
+        // **UPDATED**: More specific error handling for the most common issue (missing index).
+        if (error.code === 'failed-precondition') {
+            console.error("Firestore index for notifications is missing. Firebase should have logged a link to create it in the console. This is required for notifications to work.");
+            showAlert("Action Required: A database index is missing for notifications.");
+        } else {
+            showAlert("Could not check for new new notifications.");
+        }
+    });
+}
+
+function updateNotificationCount(count) {
+    if (count > 0) {
+        notificationsCount.textContent = count;
+        notificationsCount.style.display = 'flex';
+    } else {
+        notificationsCount.style.display = 'none';
+    }
+}
+
+async function handleNotificationBellClick() {
+    notificationsDropdown.style.display = notificationsDropdown.style.display === 'block' ? 'none' : 'block';
+
+    if (notificationsDropdown.style.display === 'block') {
+        const listElement = document.getElementById('notifications-list');
+        listElement.innerHTML = '<div class="loading">Loading...</div>';
+
+        try {
+            const query = db.collection('notifications')
+                .where('recipientId', '==', currentUser.uid)
+                .orderBy('timestamp', 'desc')
+                .limit(15);
+            
+            const snapshot = await query.get();
+            
+            if (snapshot.empty) {
+                listElement.innerHTML = '<div class="notification-item" style="text-align: center; padding: 20px;">You have no notifications.</div>';
+                return;
+            }
+
+            const notifications = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
+            listElement.innerHTML = notifications.map(notification => {
+                const timeAgo = getTimeAgo(notification.timestamp?.toDate());
+                return `
+                    <div id="notification-${notification.id}" class="notification-item ${notification.isRead ? '' : 'unread'}" >
+                        <div class="notification-content" onclick="showQuestionDetail('${notification.questionId}'); markNotificationRead(event, '${notification.id}');">
+                            <p class="notification-text">
+                                <strong>${escapeHtml(notification.senderName)}</strong>
+                                mentioned you in: 
+                                <em>"${escapeHtml(notification.questionTitle)}"</em>
+                            </p>
+                            <span class="notification-time">${timeAgo}</span>
+                        </div>
+                        <button class="delete-notification-btn" onclick="deleteNotification(event, '${notification.id}')" title="Delete notification">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+                        </button>
+                    </div>
+                `;
+            }).join('');
+
+            // Mark these notifications as read in the background
+            const unreadDocs = snapshot.docs.filter(doc => !doc.data().isRead);
+            if (unreadDocs.length > 0) {
+                const batch = db.batch();
+                unreadDocs.forEach(doc => {
+                    batch.update(doc.ref, { isRead: true });
+                });
+                await batch.commit();
+            }
+
+        } catch (error) {
+            console.error("Error loading notifications:", error);
+            if (error.code === 'failed-precondition') {
+                 listElement.innerHTML = `<div class="notification-item" style="padding: 15px;">
+                    <p style="font-weight: bold; color: #c82333;">Action Required</p>
+                    <p>The database query for notifications failed. This usually means a composite index is missing.</p>
+                    <p>Please check the browser's developer console (F12) for an error message from Firebase that includes a direct link to create the required index.</p>
+                 </div>`;
+            } else {
+                 listElement.innerHTML = '<div class="notification-item">Could not load notifications.</div>';
+            }
+        }
+    }
+}
+
+async function deleteNotification(event, notificationId) {
+    event.stopPropagation();
+    const notificationItem = document.getElementById(`notification-${notificationId}`);
+    if (!notificationItem) return;
+
+    notificationItem.classList.add('deleting');
+
+    try {
+        await db.collection('notifications').doc(notificationId).delete();
+        // The transitionend listener will remove the element after the animation
+        notificationItem.addEventListener('transitionend', () => {
+            notificationItem.remove();
+        });
+    } catch(error) {
+        console.error("Error deleting notification:", error);
+        showAlert('Could not delete the notification.');
+        notificationItem.classList.remove('deleting'); // Revert on failure
+    }
+}
+
+
+// Mark a notification as read and navigate
+async function markNotificationRead(event, notificationId) {
+    event.stopPropagation(); 
+    const notificationItem = event.currentTarget.parentElement; // The parent is the .notification-item
+    
+    notificationItem.classList.remove('unread'); 
+
+    try {
+        const notificationRef = db.collection('notifications').doc(notificationId);
+        const doc = await notificationRef.get();
+        if (doc.exists && doc.data().isRead === false) {
+             await notificationRef.update({ isRead: true });
+        }
+    } catch (error) {
+        console.error("Error marking notification as read:", error);
+        notificationItem.classList.add('unread');
+    }
+}

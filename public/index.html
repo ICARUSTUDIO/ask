@@ -40,6 +40,23 @@
                 
                 <!-- Authentication Section -->
                 <div class="auth-section">
+                     <!-- **NEW** Notifications Bell -->
+                    <div id="notifications-container" class="notifications-container" style="display: none;">
+                        <button id="notifications-bell" class="notifications-bell">
+                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.73 21a2 2 0 0 1-3.46 0"></path></svg>
+                            <span id="notifications-count" class="notifications-count" style="display: none;">0</span>
+                        </button>
+                        <div id="notifications-dropdown" class="notifications-dropdown">
+                            <div class="notifications-header">
+                                <h3>Notifications</h3>
+                            </div>
+                            <div id="notifications-list" class="notifications-list">
+                                <!-- Notifications will be loaded here -->
+                                <div class="loading">No notifications</div>
+                            </div>
+                        </div>
+                    </div>
+
                     <div id="auth-buttons" class="auth-buttons">
                         <button id="login-btn" class="btn btn-outline">Login</button>
                         <button id="signup-btn" class="btn btn-primary">Sign Up</button>

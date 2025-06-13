@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Google Sign-in Debug</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .debug-section {
+            background: white;
+            padding: 20px;
+            margin: 20px 0;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .test-button {
+            background: #4285f4;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+            margin: 10px 0;
+            display: block;
+        }
+        .test-button:hover {
+            background: #3367d6;
+        }
+        .log-output {
+            background: #f8f9fa;
+            border: 1px solid #e9ecef;
+            padding: 15px;
+            border-radius: 4px;
+            font-family: monospace;
+            font-size: 14px;
+            white-space: pre-wrap;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+        .status {
+            padding: 10px;
+            border-radius: 4px;
+            margin: 10px 0;
+        }
+        .status.success { background: #d4edda; color: #155724; }
+        .status.error { background: #f8d7da; color: #721c24; }
+        .status.warning { background: #fff3cd; color: #856404; }
+    </style>
+</head>
+<body>
+    <h1>Google Sign-in Debug Tool</h1>
+    
+    <div class="debug-section">
+        <h2>1. Firebase Initialization Check</h2>
+        <div id="firebase-status"></div>
+        <button class="test-button" onclick="checkFirebaseInit()">Check Firebase</button>
+    </div>
+
+    <div class="debug-section">
+        <h2>2. Google Provider Check</h2>
+        <div id="provider-status"></div>
+        <button class="test-button" onclick="checkGoogleProvider()">Check Google Provider</button>
+    </div>
+
+    <div class="debug-section">
+        <h2>3. Test Google Sign-in</h2>
+        <div id="signin-status"></div>
+        <button class="test-button" onclick="testGoogleSignin()">Test Google Sign-in</button>
+    </div>
+
+    <div class="debug-section">
+        <h2>4. Console Logs</h2>
+        <div id="console-logs" class="log-output"></div>
+        <button class="test-button" onclick="clearLogs()">Clear Logs</button>
+    </div>
+
+    <!-- Firebase SDKs -->
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+
+    <script>
+        // Override console.log to capture logs
+        const originalLog = console.log;
+        const originalError = console.error;
+        const logs = [];
+        
+        function addLog(type, message) {
+            const timestamp = new Date().toLocaleTimeString();
+            logs.push(`[${timestamp}] ${type.toUpperCase()}: ${message}`);
+            updateLogDisplay();
+        }
+        
+        console.log = function(...args) {
+            originalLog.apply(console, args);
+            addLog('log', args.join(' '));
+        };
+        
+        console.error = function(...args) {
+            originalError.apply(console, args);
+            addLog('error', args.join(' '));
+        };
+        
+        function updateLogDisplay() {
+            document.getElementById('console-logs').textContent = logs.join('\n');
+        }
+        
+        function clearLogs() {
+            logs.length = 0;
+            updateLogDisplay();
+        }
+
+        // Firebase Configuration (using your config)
+        const firebaseConfig = {
+            apiKey: "AIzaSyAfMW5eXOy3llLfnkZzZPaXpzHs_hHh4zw",
+            authDomain: "ask-a-question-today.firebaseapp.com",
+            projectId: "ask-a-question-today",
+            storageBucket: "ask-a-question-today.firebasestorage.app",
+            messagingSenderId: "186886414631",
+            appId: "1:186886414631:web:69310ba976035fce160902",
+            measurementId: "G-TFZ60S283E"
+        };
+
+        let auth, googleProvider;
+
+        function checkFirebaseInit() {
+            const statusDiv = document.getElementById('firebase-status');
+            try {
+                // Initialize Firebase
+                if (!firebase.apps.length) {
+                    firebase.initializeApp(firebaseConfig);
+                    console.log('Firebase initialized successfully');
+                }
+                
+                auth = firebase.auth();
+                
+                if (auth) {
+                    statusDiv.innerHTML = '<div class="status success">✓ Firebase initialized successfully</div>';
+                    console.log('Firebase Auth is ready');
+                } else {
+                    statusDiv.innerHTML = '<div class="status error">✗ Firebase Auth not available</div>';
+                }
+            } catch (error) {
+                console.error('Firebase initialization error:', error);
+                statusDiv.innerHTML = `<div class="status error">✗ Firebase Error: ${error.message}</div>`;
+            }
+        }
+
+        function checkGoogleProvider() {
+            const statusDiv = document.getElementById('provider-status');
+            try {
+                if (!auth) {
+                    statusDiv.innerHTML = '<div class="status warning">⚠ Please initialize Firebase first</div>';
+                    return;
+                }
+
+                googleProvider = new firebase.auth.GoogleAuthProvider();
+                googleProvider.setCustomParameters({
+                    prompt: 'select_account'
+                });
+
+                if (googleProvider) {
+                    statusDiv.innerHTML = '<div class="status success">✓ Google Provider configured successfully</div>';
+                    console.log('Google Provider ready');
+                } else {
+                    statusDiv.innerHTML = '<div class="status error">✗ Google Provider not available</div>';
+                }
+            } catch (error) {
+                console.error('Google Provider error:', error);
+                statusDiv.innerHTML = `<div class="status error">✗ Provider Error: ${error.message}</div>`;
+            }
+        }
+
+        async function testGoogleSignin() {
+            const statusDiv = document.getElementById('signin-status');
+            
+            if (!auth || !googleProvider) {
+                statusDiv.innerHTML = '<div class="status warning">⚠ Please check Firebase and Google Provider first</div>';
+                return;
+            }
+
+            try {
+                statusDiv.innerHTML = '<div class="status warning">🔄 Attempting Google Sign-in...</div>';
+                console.log('Starting Google sign-in...');
+                
+                const result = await auth.signInWithPopup(googleProvider);
+                
+                console.log('Google sign-in successful:', result.user);
+                statusDiv.innerHTML = `
+                    <div class="status success">
+                        ✓ Google Sign-in successful!<br>
+                        User: ${result.user.displayName || result.user.email}<br>
+                        UID: ${result.user.uid}
+                    </div>
+                `;
+                
+                // Sign out after successful test
+                setTimeout(() => {
+                    auth.signOut().then(() => {
+                        console.log('Test user signed out');
+                    });
+                }, 2000);
+                
+            } catch (error) {
+                console.error('Google sign-in error:', error);
+                let errorMessage = error.message;
+                
+                // Provide specific error explanations
+                if (error.code === 'auth/popup-blocked') {
+                    errorMessage += '\n\nSolution: Please allow popups for this site in your browser settings.';
+                } else if (error.code === 'auth/popup-closed-by-user') {
+                    errorMessage += '\n\nThe sign-in popup was closed. Please try again.';
+                } else if (error.code === 'auth/unauthorized-domain') {
+                    errorMessage += '\n\nThis domain is not authorized. Add it to Firebase Console > Authentication > Settings > Authorized domains.';
+                } else if (error.code === 'auth/operation-not-allowed') {
+                    errorMessage += '\n\nGoogle sign-in is not enabled. Enable it in Firebase Console > Authentication > Sign-in method.';
+                }
+                
+                statusDiv.innerHTML = `<div class="status error">✗ Sign-in Error: ${errorMessage}</div>`;
+            }
+        }
+
+        // Auto-run Firebase check on load
+        window.addEventListener('load', () => {
+            console.log('Debug tool loaded');
+            checkFirebaseInit();
+        });
+    </script>
+</body>
+</html>
